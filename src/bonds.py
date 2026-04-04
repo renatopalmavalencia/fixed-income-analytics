@@ -176,8 +176,7 @@ class VanillaBond:
         periods = np.arange(1, self.n + 1)
         
         # Cash Flows
-        cash_flows = np.full(self.n, self.c)
-        cash_flows[-1] += self.F
+        cash_flows = self.cash_flows()
         
         # Present Value of each flow
         pv_flows = cash_flows / (1 + y)**periods
