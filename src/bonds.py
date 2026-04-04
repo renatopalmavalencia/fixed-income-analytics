@@ -44,10 +44,31 @@ class VanillaBond:
                 f"face_value={self.F}, maturity={self.T}, "
                 f"frequency={self.freq})")
 
+    # ---- 1. CASH FLOWS ---- #
+
+    def cash_flows(self) -> np.ndarray:
+        """
+        Cash flow vector CF_i.
+
+        CF_i = c          for i = 1, ..., n-1
+        CF_n = c + F      at maturity
+
+        Mathematical reference:
+            CF_i = C            i = 1,...,n-1
+            CF_n = C + F        i = n
+
+        Returns
+        -------
+        np.ndarray : Array of cash flows of length n
+        """
+        cf     = np.full(self.n, self.c)
+        cf[-1] += self.F
+        return cf
+    
     # ---- 2. BOND PRICING ---- #
 
     def bond_price(self, ytm: float) -> float:
-         """
+        """
         Bond price given a yield (YTM).
 
         Formula:
