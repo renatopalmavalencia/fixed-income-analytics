@@ -15,9 +15,9 @@ from src.bonds import VanillaBond
 from src.curves import DiscountCurve, CurveInterpolator
 
 
-# ══════════════════════════════════════════════════════════════
-# CLASS 1: BOND SENSITIVITY
-# ══════════════════════════════════════════════════════════════
+# ------------------------- #
+# CLASS 1: BOND SENSITIVITY #
+#-------------------------- #
 
 class BondSensitivity:
     """
@@ -46,7 +46,7 @@ class BondSensitivity:
                 f"bond={self.bond}, "
                 f"price={self._P:.4f})")
 
-    # ── 1. PRICE UNDER FULL CURVE ─────────────────────────────
+    # ---- 1. PRICE UNDER FULL CURVE ---- #
 
     def _price(self, curve: DiscountCurve = None) -> float:
         """
@@ -76,7 +76,7 @@ class BondSensitivity:
         )
         return pv
 
-    # ── 2. PARALLEL SHIFT DV01 ────────────────────────────────
+    # ---- 2. PARALLEL SHIFT DV01 ---- #
 
     def dv01_parallel(self, eps: float = 0.0001) -> float:
         """
@@ -120,7 +120,7 @@ class BondSensitivity:
         """
         return self.dv01_parallel() / (self._P * 0.0001)
 
-    # ── 3. KEY RATE DURATIONS ─────────────────────────────────
+    # ---- 3. KEY RATE DURATIONS ---- #
 
     def key_rate_durations(self,
                            eps: float = 0.0001) -> dict:
@@ -190,7 +190,7 @@ class BondSensitivity:
             for t, krd in krds.items()
         }
 
-    # ── 4. SUMMARY ────────────────────────────────────────────
+    # ---- 4. SUMMARY ---- #
 
     def summary(self, eps: float = 0.0001) -> dict:
         """
@@ -227,9 +227,9 @@ class BondSensitivity:
         }
 
 
-# ══════════════════════════════════════════════════════════════
-# CLASS 2: PORTFOLIO SENSITIVITY
-# ══════════════════════════════════════════════════════════════
+# ------------------------------ #
+# CLASS 2: PORTFOLIO SENSITIVITY #
+# ------------------------------ #
 
 class PortfolioSensitivity:
     """
@@ -274,7 +274,7 @@ class PortfolioSensitivity:
                 f"{len(self.bonds)} bonds, "
                 f"curve nodes={len(self.curve.maturities)})")
 
-    # ── 1. PORTFOLIO VALUE ────────────────────────────────────
+    # ---- 1. PORTFOLIO VALUE ---- #
 
     def portfolio_value(self) -> float:
         """
@@ -293,7 +293,7 @@ class PortfolioSensitivity:
                             self._sensitivities)
         )
 
-    # ── 2. PORTFOLIO DV01 ─────────────────────────────────────
+    # ---- 2. PORTFOLIO DV01 ---- #
 
     def dv01_parallel(self) -> float:
         """
@@ -312,7 +312,7 @@ class PortfolioSensitivity:
                             self._sensitivities)
         )
 
-    # ── 3. PORTFOLIO KRD ──────────────────────────────────────
+    # ---- 3. PORTFOLIO KRD ---- #
 
     def key_rate_durations(self) -> dict:
         """
@@ -359,7 +359,7 @@ class PortfolioSensitivity:
 
         return dv01_portfolio
 
-    # ── 4. SCENARIO ANALYSIS ──────────────────────────────────
+    # ---- 4. SCENARIO ANALYSIS ---- #
 
     def scenario_pnl(self,
                      curve_shift: np.ndarray) -> float:
@@ -389,7 +389,7 @@ class PortfolioSensitivity:
         # dV ≈ -DV01_k * (shift_k / 0.0001) per node
         return -np.dot(dv01_v, curve_shift / 0.0001)
 
-    # ── 5. SUMMARY TABLE ──────────────────────────────────────
+    # ---- 5. SUMMARY TABLE ---- #
 
     def summary_table(self) -> pd.DataFrame:
         """
@@ -437,7 +437,7 @@ class PortfolioSensitivity:
 
         return pd.DataFrame(rows).set_index("Bond")
 
-    # ── 6. HEDGE RATIOS ───────────────────────────────────────
+    # ---- 6. HEDGE RATIOS ---- #
 
     def hedge_ratios(self,
                      hedges: list,

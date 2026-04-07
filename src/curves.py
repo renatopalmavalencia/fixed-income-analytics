@@ -12,9 +12,9 @@ import numpy as np
 from scipy import optimize, interpolate
 
 
-# -----------------------
-# CLASS 1: DISCOUNT CURVE
-# -----------------------
+# ----------------------- #
+# CLASS 1: DISCOUNT CURVE #
+# ----------------------- #
 
 class DiscountCurve:
     """
@@ -166,9 +166,9 @@ class DiscountCurve:
                          for t in t_grid])
 
 
-# ---------------------
-# CLASS 2: BOOTSTRAPPER
-# ---------------------
+# --------------------- #
+# CLASS 2: BOOTSTRAPPER #
+# --------------------- #
 
 class Bootstrapper:
     """
@@ -252,9 +252,9 @@ class Bootstrapper:
         return DiscountCurve(maturities, r_continuous)
 
 
-# ---------------------------
-# CLASS 3: CURVE INTERPOLATOR
-# ---------------------------
+# --------------------------- #
+# CLASS 3: CURVE INTERPOLATOR #
+# --------------------------- #
 
 class CurveInterpolator:
     """
