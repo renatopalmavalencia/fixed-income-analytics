@@ -600,4 +600,52 @@ class SwapPortfolio:
                     tenor_short: float,
                     tenor_long: float,
                     frequency: int,
-                    curv
+                    curve: DiscountCurve) -> 'SwapPortfolio':
+        """
+        Classic yield curve trade:
+            - Receive fixed in long-dated swap (long)
+            - Pay fixed in short-dated swap (short)
+
+        Profits from curve flattening (long rates fall
+        relative to short rates) regardless of parallel
+        level shifts.
+
+        Parameters
+        ----------
+        notional    : float          Notional amount
+        tenor_short : float          Short swap tenor
+        tenor_long  : float          Long swap tenor
+        frequency   : int            Payment frequency
+        curve       : DiscountCurve  Current curve
+
+        Returns
+        -------
+        SwapPortfolio : Two-legged curve trade
+        """
+        # Short swap: pay fixed (standard long position)
+        swap_short = VanillaIRS(
+            notional, 0.0,   # K set to K* below
+            tenor_short, frequency, curve, "long"
+        )
+        K_short = swap_short.swap_rate()
+        swap_short = VanillaIRS(
+            notional, K_short,
+            tenor_short, frequency, curve, "long"
+        )
+
+        # Long swap: receive fixed (short position)
+        swap_long = VanillaIRS(
+            notional, 0.0,
+            tenor_long, frequency, curve, "short"
+        )
+        K_long = swap_long.swap_rate()
+        swap_long = VanillaIRS(
+            notional, K_long,
+            tenor_long, frequency, curve, "short"
+        )
+
+        return SwapPortfolio(
+            [swap_short, swap_long],
+            [f"Pay Fixed {tenor_short}y (K={K_short:.4%})",
+             f"Recv Fixed {tenor_long}y (K={K_long:.4%})"]
+        )
