@@ -1,0 +1,1557 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage[utf8]{inputenc} % Symbol Procesing
+\usepackage{amsmath,amsfonts,amsthm,geometry,amssymb} % Math Packages
+\usepackage{hyperref} % Vinculation and References
+\hypersetup{
+    colorlinks = true,
+    linkcolor = blue,
+    urlcolor = red,
+    citecolor = green!70!black,
+    }
+\usepackage{threeparttable}
+
+\usepackage{fancyhdr} % Fancy Headers and Footers
+\pagestyle{fancy} 
+\lhead{Renato Palma Valencia} 
+\rhead{Fixed Income Analytics} 
+\cfoot{\thepage}
+\usepackage[Conny]{fncychap}
+% Options: Sonny, Lenny, Glenn, Conny, Rejne, Bjarne, Bjornstrup 
+\usepackage{xcolor} % color control 
+    \definecolor{codegreen}{rgb}{0,0.6,0}
+    \definecolor{codegray}{rgb}{0.5,0.5,0.5}
+    \definecolor{codepurple}{rgb}{0.58,0,0.82}
+    \definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+    \definecolor{pythonblue}{rgb}{0.1875,0.4102,0.6032}
+    \definecolor{pythonyellow}{rgb}{0.996, 0.9063, 0.4492}
+
+\usepackage{tikz, tcolorbox} % Beautiful Boxes to write theorems and tkiz for plots
+
+\usepackage{witharrows} %Fancy arrows in equations
+\usepackage{multicol}
+\usepackage{tikz}
+\usepackage{natbib}
+\usepackage{appendix}
+\usepackage{listings} % Python Code block
+
+\lstdefinestyle{Pythonstyle}{
+  language=Python,
+  backgroundcolor= \color{backcolour},
+  keywordstyle=\color{magenta},
+  commentstyle=\color{codegreen},
+  stringstyle=\color{codepurple},
+  numbers=left,
+  basicstyle=\ttfamily\footnotesize,
+  numberstyle=\tiny\color{codegray},
+  breakatwhitespace=false,
+  frame=single,
+  breaklines=true,
+  captionpos=b,
+  keepspaces=true,
+  numbers=left,
+  numbersep=5pt,
+  showspaces=false,
+  showstringspaces=false,
+  showtabs=false,
+  tabsize=2,
+}
+
+\usepackage{amsthm}
+\theoremstyle{definition}  % Estilo sin cursiva
+\newtheorem{definition}{Definition}[section]
+\theoremstyle{plain}  % Estilo estándar en cursiva
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{lemma}{Lemma}[section]
+\newtheorem{corollary}{Corollary}[section]
+
+\numberwithin{definition}{section}
+\numberwithin{proposition}{section}
+\numberwithin{theorem}{section}
+\numberwithin{equation}{section}
+
+\title{Fixed Income Analytics}
+\author{Renato Antonio Palma Valencia}
+\date{April 2026}
+
+\begin{document}
+\pagecolor{white}
+
+\maketitle
+
+\newpage
+
+\tableofcontents
+
+\newpage
+
+\begin{abstract}
+    This document develops the mathematical foundations of Fixed Income Analytics implemented in the companion Python library \texttt{fixed-income-analytics}. Each module corresponds directly to a Python module in \texttt{/src}.
+\end{abstract}
+
+\section{Module 1: Bond Pricing}
+\label{sec:M1}
+
+\begin{tcolorbox}[title = Python Implementation, colback = pythonyellow!70!white, colframe = pythonblue]
+    \textbf{Module:} \color{magenta} \texttt{src/bonds.py}  \color{black}\\
+    \textbf{Class:} \color{codegreen} \texttt{VanillaBond} \color{black} \\
+    \textbf{Notebook:} \texttt{notebooks/01\_bond\_pricing.ipynb}
+\end{tcolorbox}
+
+\subsection{Introduction and Class Hierarchy}
+
+This module implements the mathematical foundations of vanilla bond pricing. Starting from the definition of a bond as a sequence of deterministic cash flows, we derive closed-form pricing formulas under discrete, generalized and continuous compounding, introduce the yield-to-maturity as the internal rate of return of the instrument, and develop the first and second-order risk metrics that form the language of fixed income trading.
+
+\begin{verbatim}
+src/bonds.py
+|- VanillaBond
+        |-- Pricing
+        |       |-- cash_flows()
+        |       |-- bond_price(ytm)
+        |       |-- bond_price_continuous(r)
+        |-- Yield
+        |       |-- ytm(market_price)
+        |-- Risk Metrics
+        |       |-- risk_metrics(ytm)
+        |               |-- Macaulay Duration
+        |               |-- Modified Duration
+        |               |-- Convexity
+        |               |-- DV01
+        |-- Analysis
+        |       |-- price_change(ytm, dy)
+        |       |-- parity(ytm)
+        |-- Validation
+                |-- validate_roundtrip(r)
+\end{verbatim}
+
+In \color{magenta} \texttt{bonds.py} \color{black} the entire module is encapsulated in a single class \color{codegreen} \texttt{VanillaBond} \color{black}. A bond is instantiated with its economic parameters and all pricing, risk and analysis methods are exposed as instance methods, allowing clean and readable usage:
+
+\begin{lstlisting}[style = Pythonstyle]
+    bond = VanillaBond(coupon_rate = 0.05,
+                       face_value = 1000,
+                       maturity = 10,
+                       frequency = 1)
+    # Pricing
+    P = bond.bond_price(ytm = 0.04)
+
+    # Risk Metrics
+    metrics = bond.risk_metrics(ytm = 0.04)
+
+    # Taylor Approximation
+    approx = bond.price_change(ytm = 0.04, dy = 0.01)
+\end{lstlisting}
+
+\subsection{Definition and Fair Price}
+\label{subsec:bonddefinition}
+
+\begin{definition}[Vanilla Bond]
+    A bond is a fixed income instrument that represents a debt obligation. The issuer commits to pay:
+    \begin{enumerate}
+        \item Coupons $C$ at periodic dates $t_1, t_2, \dots, t_n$.
+        \item A principal (Face Value) $F$ at maturity date $t_n$.
+    \end{enumerate}
+\end{definition}
+
+The cash flow at each period is formally defined as:
+\begin{align*}
+    CF_{i} = 
+    \begin{cases}
+        C & i = 1, 2, \dots, n - 1 \\
+        C + F & i = n
+    \end{cases}
+\end{align*}
+
+\begin{proposition}[Bond Fair Price]
+    The fair price $P$ of a bond is given by:
+    \begin{align*}
+        P = \frac{C(1 - (1 + r)^{-n})}{r} + F (1 + r)^{-n}
+    \end{align*}
+    with $r$ the constant periodic discount rate and $n$ the number of periods.
+\end{proposition}
+
+\begin{proof}
+    Notice that the price of a bond equals to the present value of all its cash flows:
+    \begin{align*}
+        P = \sum_{i = 1}^{n} \frac{C}{(1 + r)^{i}} + \frac{F}{(1 + r)^{n}} = \frac{F}{(1 + r)^{n}} + C \sum_{i = 1}^{n} \left(\frac{1}{1 + r}\right)^{i}
+    \end{align*}
+    Using the geometric sum formula $\sum_{i = 1}^{n} q^{i} = \frac{1 - q^{n + 1}}{1 - q}$ with $q = 1/(1 + r)$:
+    \begin{align*}
+        P &= \frac{F}{(1 + r)^{n}} + C \left[\frac{1 - \left(\frac{1}{1 + r}\right)^{n + 1}}{1 - \frac{1}{1 + r}} - 1\right] = F (1 + r)^{-n} + C \left[ \frac{(1 + r) - (1 + r)^{-n} - r}{r} \right] \\
+        P &= C \left[\frac{1 - (1 + r)^{-n}}{r}\right] + F(1 + r)^{-n}
+    \end{align*}
+\end{proof}
+
+\subsection{Generalization and Examples}
+\label{subsec:bondgeneralprice}
+
+If the periodic discount rate $r$ compounds $T$ times per period, the balance factor is: $\left(1 + \frac{r}{T} \right)^{nT}$ and the price generalizes to:
+\begin{proposition}
+    The fair price $P$ of a bond is:
+    \begin{align*}
+        P = C \cdot \left[\frac{1 - (1 + \frac{r}{T})^{-nT}}{(1 + \frac{r}{T})^{T} - 1}\right] + F \left(1 + \frac{r}{T} \right)^{-nT}
+    \end{align*}
+    with $r$ the periodic discount rate, $n$ the maturity, $T$ the number of compounds of the discount rate per period.
+\end{proposition}
+
+\begin{proof}
+    \begin{align*}
+    P &= \sum_{i = 1}^{n} \frac{C}{(1 + \frac{r}{T})^{iT}} + \frac{F}{(1 + \frac{r}{T})^{nT}} = \frac{F}{(1 + \frac{r}{T})^{nT}} + C  \sum_{i = 1}^{n} \frac{1}{(1 + \frac{r}{T})^{iT}} \\
+    &= \frac{F}{(1 + \frac{r}{T})^{nT}} + C \sum_{i = 1}^{n} \left(\left(\frac{1}{1 + \frac{r}{T}}\right)^{T}\right)^{i} = \frac{F}{(1 + \frac{r}{T})^{nT}} + C \left[\frac{1 - \left(\frac{1}{1 + \frac{r}{T}}\right)^{(n + 1)T}}{1 - \left(\frac{1}{1 + \frac{r}{T}}\right)^{T}} - 1\right] \\
+    &= \frac{F}{(1 + \frac{r}{T})^{nT}} + C \left[\frac{\left(1 + \frac{r}{T}\right)^{T} - \left(1 + \frac{r}{T}\right)^{-nT}}{\left(1 + \frac{r}{T}\right)^{T} - 1} - 1\right] = \frac{F}{(1 + \frac{r}{T})^{nT}} + C \left[\frac{1 - \left(1 + \frac{r}{T}\right)^{-nT}}{\left(1 + \frac{r}{T}\right)^{T} - 1}\right]
+\end{align*}
+\end{proof}
+
+The general formula unifies several classical instruments as particular cases:
+\begin{enumerate}
+    \item \textbf{Zero-Coupon Bond ($C = 0$):} When the bond pays no coupons, the price reduces to:
+    \begin{align*}
+        P = F \left(1 + \frac{r}{T}\right)^{-nT}
+    \end{align*}
+    The price is simply the present value of the face value. This is the purest form of a fixed income instrument and plays a central role in bootstrapping, since each zero-coupon bond defines exactly one point on the discount curve. Note also that the Macaulay Duration of a zero coupon bond equals exactly its maturity: $D_{\text{mac}} = n$, which is the maximum possible duration for a bond of that maturity.
+
+    \item \textbf{Continuous Compounding ($T \to \infty$):} Taking $T \to \infty$ and using that $\lim_{T \to \infty} (1 + \frac{r}{T})^{nT} = e^{rn}$, we get the following price of the bond:
+    \begin{align*}
+        P = C \cdot \left(\frac{1 - e^{-rn}}{e^{r} - 1}\right) + F e^{-rn}
+    \end{align*}
+    this is the standard continuous compounding formula used throughout quantitative finance and is the natural limit of the general formula. Consider the case of a bond with a coupon rate $C/F = 5 \%$, a face value $F = \$ 1000$, a maturity $n = 10$ and a discount rate $r = 0.04$. Notice in Figure \ref{fig:01_convergence} how the price converges as there are more compounds $T$ per year, this is, as $T \to \infty$:
+    
+    \begin{figure}[ht!]
+        \centering
+        \includegraphics[width=1 \linewidth]{Figures/01_convergence.png}
+        \caption{Convergence of Bond Price as $T \to \infty$}
+        \label{fig:01_convergence}
+    \end{figure}
+
+    \item \textbf{Consol Bond ($n \to \infty$):} A consol (or perpetuity) pays coupons forever and never returns the principal. Taking $n \to \infty$ in the price formula and noting that $(1 + r)^{-n T} \to 0$:
+    \begin{align*}
+        P = \frac{C}{\left(1 + \frac{r}{T}\right)^{T} - 1}
+    \end{align*}
+    The price is simply the coupon divided by the discount balance factor. This result has a beautiful intuition: A perpetuity is worth exactly the amount you would need to invest at rate $\left(1 + \frac{r}{T}\right)^{T} - 1$ to generate coupon $C$ forever. Note that the British government issued consols (Consolidated Annuities) that traded in market for over 200 years.
+
+    \item \textbf{Par Bond ($P = F$):} When the discount balance factor is $\left(1 + \frac{r}{T}\right)^{T} - 1 = \frac{C}{F}$, the price of the bond is:
+    \begin{align*}
+        P = C \cdot \left(\frac{1 - (1 + \frac{r}{T})^{-n T}}{C/F}\right) + F \left(1 + \frac{r}{T}\right)^{-n T} = F -  F \left(1 + \frac{r}{T}\right)^{-n T} +  F \left(1 + \frac{r}{T}\right)^{-n T} = F
+    \end{align*}
+    This bond trades at par. This case connects directly to the YTM parity result in section \ref{subsec:ytm}
+\end{enumerate}
+
+\subsection{Yield to Maturity (YTM)}
+\label{subsec:ytm}
+
+\begin{definition}[Yield to Maturity]
+    The YTM is the rate $y$ that equates the market price of the bond with the present value of its cash flows:
+    \begin{align*}
+        P = \sum_{i = 1}^{n} \frac{CF_{i}}{(1 + \frac{y}{T})^{iT}}
+    \end{align*}
+    This equation has no closed-form solution and must be solved numerically.
+\end{definition}
+
+\begin{definition}[Newton Raphson Method]
+    Define the objective function:
+    \begin{align*}
+        f(y) = \sum_{i = 1}^{n} \frac{CF_{i}}{(1 + \frac{y}{T})^{iT}} - P = 0
+    \end{align*}
+    and its derivative, used for the Newton Step:
+    \begin{align*}
+        f'(y) = - \sum_{i = 1}^{n} \frac{i \cdot CF_{i}}{(1 + \frac{y}{T})^{iT + 1}}
+    \end{align*}
+    The Newton-Raphson iteration updates the estimate with the following recursion:
+    \begin{align*}
+        y_{k + 1} &= y_{k} - \frac{f(y_{k})}{f'(y_{k})}
+    \end{align*}
+    starting from an initial guess $y_{0}$.
+\end{definition}
+
+The algorithm converges quadratically to the true YTM. Convergence is guaranteed because $f(y)$ is strictly convex and monotonically decreasing in $y$, which ensures a unique root. In \color{magenta} \texttt{bonds.py} \color{black} this is implemented via \texttt{scipy.optimize.newton} with analytical derivative for maximum efficiency.\\
+The key price-yield relationship is:
+\begin{align*}
+    \uparrow y \Rightarrow \downarrow P \quad \& \quad \downarrow y \Rightarrow \uparrow P
+\end{align*}
+
+\subsection{Bond Parity}
+
+\begin{proposition}
+    Let $c = C/F$ be the coupon rate. Then:
+    \begin{align*}
+        P \lessgtr F \iff \left(1 + \frac{y}{T}\right)^{T} - 1 \gtrless c
+    \end{align*}
+\end{proposition}
+
+\begin{proof}
+    Substituting $\left(1 + \frac{y}{T}\right)^{T} - 1 = c$ and $C = cF$:
+    \begin{align*}
+        P = cF \cdot \left(\frac{1 - (1 + \frac{y}{T})^{-n T}}{c}\right) + F \left(1 + \frac{y}{T}\right)^{-n T} = F -  F \left(1 + \frac{y}{T}\right)^{-n T} +  F \left(1 + \frac{y}{T}\right)^{-n T} = F
+    \end{align*}
+    Since $P$ is strictly decreasing in $y$ ($f'(y) < 0$) and $\left(1 + \frac{y}{T}\right)^{T} - 1 > 0$ then the result follows directly.
+\end{proof}
+
+When there is one capitalization per year ($T = 1$) the condition collapses to:
+\begin{align*}
+    P \lessgtr F \iff y \gtrless c
+\end{align*}
+The economic intuition for this case is clear: when the market demands a return $y > c$, the bond's coupons are insufficient, so the market discounts the price below par to compensate with a capital gain at maturity. The opposite holds when $y < c$. To see this graphically, consider the case of a bond with coupon rate $c = C/F = 5 \%$, a face value of $\$1000$, a maturity $n = 10$ and a discrete capitalization $T = 1$. The Figure \ref{fig:01_price_yield} plots the price of the bond $P$ against the yield $y$ and shows the areas where the bond is at premium or discount.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1 \linewidth]{Figures/01_price_yield.png}
+    \caption{Price-Yield Relationship}
+    \label{fig:01_price_yield}
+\end{figure}
+
+\begin{table}[ht]
+    \centering
+    \begin{tabular}{|c|c|c|} \hline
+        Condition & Name & Intuition \\ \hline
+        $P = F \iff y = c$ & Bond at Par & Market rate equals coupon rate \\
+        $P > F \iff y < c$ & Bond above Par (Premium Bond) & Generous coupons, price rises \\
+        $P < F \iff y > c$ & Bond below Par (Discount Bond) & Insufficient coupons, price drops \\ \hline
+    \end{tabular}
+    \caption{Bonds Parity}
+    \label{tab:bondsparity}
+\end{table}
+
+Regardless of whether a bond starts at premium or discount, its price will converge to its face value $F$ as it approaches maturity ($t \to n$), a phenomenon known as \textit{Pull to Par}.
+
+\subsection{Duration \& DV01}
+\begin{definition}[Macaulay Duration]
+    Macaulay Duration is the weighted average time of cash flows of the bond, where weights are present values:
+    \begin{align*}
+        D_{\text{mac}} &= \frac{1}{P} \sum_{i = 1}^{n} i \cdot \frac{CF_{i}}{(1 + \frac{y}{T})^{iT}}
+    \end{align*}
+    where $CF_i$ is the cash flow at period $i$ and $T$ the number of coupons periods per year. This is the average time for the investor to recover the investment.
+\end{definition}
+
+As we said in section \ref{subsec:bondgeneralprice}, the zero-coupon bond has a Macaulay Duration $D_{\text{mac}} = n$, now we can prove it by applying the definition and recalling that $P_{\text{zero}} = F \left(1 + \frac{y}{T}\right)^{-n T}$:
+\begin{align*}
+    D_{\text{mac}} = F^{-1} \left(1 + \frac{y}{T}\right)^{n T} \cdot n F \left(1 + \frac{y}{T}\right)^{-n T} = n
+\end{align*}
+
+\begin{definition}[Modified Duration]
+    It measures the price sensitivity to yield changes:
+    \begin{align*}
+        D_{\text{mod}} = \frac{D_{mac}}{1 + \frac{y}{T}}
+    \end{align*}
+\end{definition}
+
+We can plot these durations against maturity to see how they behave. Consider a bond with four different coupon rates $c = C/F = (0 \%, 2\%, 5\%, 10\%)$, face value $F = 1000$ and yield $y = 5\%$ that compounds once per year $T = 1$. Figure \ref{fig:01_duration} shows durations against maturity and how as coupon rates increase, duration gets lower.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1 \linewidth]{Figures/01_duration.png}
+    \caption{Durations versus Maturity}
+    \label{fig:01_duration}
+\end{figure}
+
+\begin{proposition}
+    Price sensitivity can be written as:
+    \begin{align*}
+        \frac{dP}{dy} &= -D_{\text{mod}} \cdot P
+    \end{align*}
+\end{proposition}
+
+\begin{proof}
+    Remember that:
+    \begin{align*}
+        P &= \sum_{i = 1}^{n} \frac{C}{(1 + \frac{y}{T})^{iT}} + \frac{F}{(1 + \frac{y}{T})^{nT}} = \sum_{i = 1}^{n} \frac{CF_i}{(1 + \frac{y}{T})^{iT}} \\
+        \frac{dP}{dy} &= - \sum_{i = 1}^{n} \frac{i \cdot CF_{i}}{(1 + \frac{y}{T})^{iT + 1}} = - \frac{1}{1 + \frac{y}{T}} \sum_{i = 1}^{n} i \cdot \frac{CF_i}{(1 + \frac{y}{T})^{iT}} = -P \cdot \frac{D_{\text{mac}}}{1 + \frac{y}{T}} = - D_{\text{mod}} \cdot P
+    \end{align*}
+\end{proof}
+
+In continuous compounding ($T \to \infty$):
+
+\begin{align*}
+    D_{\text{mac}} = \lim_{T \to \infty} D_{\text{mod}} \left(1 + \frac{y}{T}\right) = D_{\text{mod}} = - \frac{1}{P} \frac{dP}{dy}
+\end{align*}
+
+\begin{definition}[Dollar Value of a Basis Point]
+    DV01 is how much the bond price changes when the yield changes 1 basis point $(0.01 \%)$:
+    \begin{align*}
+        \text{DV01} &= - \frac{dP}{dy} \cdot 0.0001 = D_{\text{mod}} \cdot P \cdot 0.0001
+    \end{align*}
+\end{definition}
+
+\subsection{Convexity and Taylor Approximation}
+As duration is a first order linear approximation, convexity captures the second order effect:
+
+\begin{definition}[Bond Convexity]
+    Bond convexity measures the non-linear relationship between price and yield:
+    \begin{align*}
+        \mathcal{C} = \frac{1}{P} \frac{d^{2} P}{dy^{2}} = \frac{1}{P} \sum_{i = 1}^{n} \frac{i (iT + 1)}{T} \cdot \frac{CF_i}{(1 + \frac{y}{T})^{iT + 2}}
+    \end{align*}
+\end{definition}
+
+Combining Duration and Convexity gives the second-order Taylor approximation of price change:
+\begin{align*}
+    P(y) &= P(y_{0}) + \frac{dP}{dy} (y - y_{0}) + \frac{1}{2} \frac{d^{2} P}{dy^{2}} (y - y_{0})^{2} + \cdots \\
+    P(y) - P(y_{0}) &\approx -D_{\text{mod}} \cdot P (y - y_{0}) + \frac{1}{2} P \cdot \mathcal{C} (y - y_{0})^{2} \\
+    \Delta P &\approx P \left(-D_{\text{mod}} \cdot \Delta y + \frac{1}{2} \mathcal{C} \cdot (\Delta y)^{2} \right)
+\end{align*}
+Convexity is always positive for vanilla bonds, meaning the price-yield curve is convex: gains from falling yields exceed losses from equal rising yields. This is a desirable property for the bond-holder and explains why higher convexity bonds command a premium in the market. \\
+We can visualize the second-order Taylor approximation and the gains of adding the second-order term (convexity) instead of just approximating with the first order term for a bond with the same characteristics as the examples above.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1\linewidth]{Figures/01_approximation.png}
+    \caption{First and Second-Order Approximation of a Bond Price}
+    \label{fig:01_approximation}
+\end{figure}
+
+At changes of the yield of 100 bp, the approximation error with the first-order term only is $\$3.4751$, adding the second-order term we get an absolute error of $\$0.1256$.
+
+\subsection{Conclusions and Key Takeaways}
+
+\begin{itemize}
+\item The bond price is a strictly convex, decreasing function of the yield: Duration captures the slope and Convexity captures the curvature of this relationship.
+
+\item The YTM has no closed-form solution but converges quadratically under Newton-Raphson, since the objective function is strictly convex and monotone.
+
+\item Convexity is always positive for vanilla bonds: the second-order Taylor approximation materially improves the price estimate for yield moves above 50 bps.
+\end{itemize}
+
+The bond pricing framework of this module rests on a critical simplification: the discount rate $r$ is assumed constant across all maturities. In practice, this is never true. A 1-year investment and a 10-year investment command different rates, and the relationship between rates and maturities (the \textit{term structure} of interest rates) is one of the most important objects in fixed income. Formally, replacing the constant $r$ with a maturity dependent function $r(t)$ transforms the bond price from:
+\begin{align*}
+    P &= \sum_{i = 1}^{n} \frac{CF_{i}}{(1 + \frac{r}{T})^{-iT}}
+\end{align*}
+into:
+\begin{align*}
+    P &= \sum_{i = 1}^{n} \frac{CF_{i}}{(1 + \frac{r(t_{i})}{T})^{-t_{i}T}} \overset{\text{In Continuous Capitalization}}{\Rightarrow} P = \sum_{i = 1}^{n} CF_{i} e^{-r(t_{i}) \cdot t_{i}}
+\end{align*}
+where each cash flow is discounted at its own maturity-specific rate. This requires building the entire function $r(t)$ from observed market prices, the problem of \textbf{yield curve construction}, which is the subject of module \ref{sec:M2}.
+
+\newpage
+
+\section{Module 2: Yield Curve}
+\label{sec:M2}
+
+\begin{tcolorbox}[title = Python Implementation, colback = pythonyellow!80!white, colframe = pythonblue]
+    \textbf{Module:} \color{magenta} \texttt{src/curves.py} \color{black} \\
+    \textbf{Classes:} \color{codegreen} \texttt{DiscountCurve} \color{black}, \color{codegreen} \texttt{Bootstrapper} \color{black} and \color{codegreen} \texttt{CurveInterpolator} \color{black} \\
+    \textbf{Notebook:} \texttt{notebooks/02\_yield\_curve.ipynb}
+\end{tcolorbox}
+
+\subsection{Introduction and Class Hierarchy}
+
+This module extends the single-rate bond pricing of Module \ref{sec:M1} to the full term structure setting. Rather than discounting all cash flows at a constant rate $r$, we build a continuous function $r(t)$ from observable market prices, interpolate it across arbitrary maturities, and fit a parametric model that captures its economic structure. The three classes in \color{magenta} \texttt{src/curves.py} \color{black} handle these three tasks in sequence.
+
+\begin{verbatim}
+src/curves.py
+|
+|-- DiscountCurve
+|       |
+|       |-- Attributes
+|       |       |-- maturities    Observed tenors
+|       |       |-- spot_rates    Continuously compounded
+|       |
+|       |-- Core
+|       |       |-- discount_factor(t)      Z(t) = e^(-r(t)*t)
+|       |       |-- discount_factors()      Z vector
+|       |       |-- spot_rate(t)            Linear interp
+|       |
+|       |-- Rates
+|               |-- forward_rate(t1, t2)    f(t1,t2)
+|               |-- instantaneous_forward(t) f(t) numerical
+|               |-- forward_curve(t_grid)   f(t) over grid
+|
+|-- Bootstrapper
+|       |-- bootstrap(prices, cash_flows,   Sequential
+|       |            maturities)            extraction
+|       |-- from_yields(maturities, yields) FRED/market data
+|
+|-- CurveInterpolator
+        |-- linear(t)                Linear on zero rates
+        |-- cubic_spline(t)          Smooth, C2 continuous
+        |-- cubic_spline_forward(t)  f(t) via spline deriv
+        |-- nss_spot(t, beta)        NSS spot formula
+        |-- nss_forward(t, beta)     NSS forward formula
+        |-- fit_nss()                L-BFGS-B calibration
+        |-- nss_summary(beta)        Economic interpretation
+        |-- compare(t_grid, beta)    All three methods
+\end{verbatim}
+
+The three classes are designed to be used in sequence. \texttt{DiscountCurve} is the fundamental data structure, holding observed spot rates and computing discount factors. \texttt{Bootstrapper} constructs a \texttt{DiscountCurve} from raw market data. \texttt{CurveInterpolator} takes a \texttt{DiscountCurve} and extends it to arbitrary maturities via three methods of increasing sophistication:
+
+\begin{lstlisting}[style = Pythonstyle]
+    # Step 1: Build curve from FRED yields
+    curve = Bootstrapper.from_yields(maturities, yields)
+
+    # Step 2: Interpolate at arbitrary maturities
+    interp = CurveInterpolator(curve)
+
+    # Step 3: Fit NSS parametric model
+    beta = interp.fit_nss()
+    r_nss = CurveInterpolator.nss_spot(t_grid, beta)
+\end{lstlisting}
+
+\subsection{Term Structure of Interest Rates and Discount Factor}
+
+In the bond pricing of Module \ref{sec:M1} we assumed a constant discount rate $r$. In reality, rates vary with maturity: a 1-year investment typically commands a different rate than a 10-year one.
+
+\begin{definition}[Term Structure of Interest Rates] \label{def:termstructure}
+    The term structure of interest rates is a function $r(t)$ that assigns a spot rate to each maturity $t$.
+\end{definition}
+Assuming that $r(t)$ is continuously differentiable, the bond price generalizes to:
+\begin{align*}
+    P = \sum_{i = 1}^{n} CF_{i} \cdot e^{-r(t_{i}) t_{i}}
+\end{align*}
+where each cash flow is discounted at its own maturity-specific rate. This is the foundation of all modern fixed income pricing.
+
+\begin{definition}[Discount Factor]
+    The continuous discount factor for maturity $t$ is:
+    \begin{align*}
+        Z(t) = e^{-r(t) \cdot t}
+    \end{align*}
+\end{definition}
+It represents the present value today of $\$1$ to be received at time $t$. The bond price can be written compactly as:
+\begin{align*}
+    P = \sum_{i = 1}^{n} CF_{i} \cdot Z(t_{i})
+\end{align*}
+Discount factors have three fundamental properties. First $Z(0) = 1$: a dollar today is worth a dollar. Second, $Z(t) \in (0, 1), \forall t > 0$ and positive rates: future cash flows are always worth less than their face value today. Third, $Z(t)$ is decreasing in $t$ for positive rates: the further in the future, the less a dollar is worth today. \\
+The spot rate can always be recovered from the discount factor:
+\begin{align*}
+    r(t) = - \frac{\ln Z(t)}{t}
+\end{align*}
+
+\subsection{Forward Rates and Instantaneous Forward Rates}
+\label{subsec:fwdrates}
+
+\begin{definition}[Forward Rate]
+    The forward rate $f(t_1, t_2)$ is the implicit rate agreed today for an investment between two future dates $t_{1}$ and $t_{2}$. It is defined by the no-arbitrage condition:
+    \begin{align*}
+        e^{r(t_2) \cdot t_2} = e^{r(t_1) \cdot t_1} \cdot e^{f(t_1, t_2) \cdot (t_2 - t_1)}
+    \end{align*}
+\end{definition}
+
+Applying logarithm at both sides:
+\begin{align*}
+    r(t_{2}) t_{2} &= r(t_{1}) t_{1} + f(t_{1}, t_{2}) (t_{2} - t_{1}) \\
+    f(t_{1}, t_{2}) &= \frac{r(t_{2}) t_{2} - r(t_{1}) t_{1}}{t_{2} - t_{1}}
+\end{align*}
+The economic intuition is clear: investing from $0$ to $t_{2}$ at spot rate $r(t_{2})$ must yield the same as investing from $0$ to $t_{1}$ at $r(t_{1})$ and then rolling over from $t_{1}$ to $t_{2}$ at the forward rate $f(t_{1}, t_{2})$. Otherwise there would be an arbitrage opportunity. \\
+In terms of the discount factors, the forward rate has an equivalent and elegant expression:
+\begin{align*}
+    f(t_{1}, t_{2}) &= \frac{\ln Z(t_{1}) - \ln Z(t_{2})}{t_{2} - t_{1}}
+\end{align*}
+
+\begin{proposition}
+    The instantaneous forward rate is given by:
+    \begin{align*}
+        f(t) = r(t) + t \cdot \frac{\partial r(t)}{\partial t}
+    \end{align*}
+\end{proposition}
+
+\begin{proof}
+    Setting $t_1 = t$ and taking the limit $t_{2} \to t$:
+    \begin{align*}
+        f(t) = \lim_{t_2 \to t} f(t, t_2) = \lim_{t_2 \to t} \frac{r(t_2) \cdot t_2 - r(t) \cdot t}{t_2 - t} = \frac{d}{dt} [r(t) \cdot t] = r(t) + t \cdot \frac{\partial r(t)}{\partial t}
+    \end{align*}
+\end{proof}
+The two terms have a clear interpretation. The first term $r(t)$ is simply the spot rate at maturity $t$. The second term $t \cdot \frac{\partial r(t)}{\partial t}$ is a correction for the slope of the yield curve: if the curve is upward sloping, the instantaneous forward rate lies above the spot rate, and vice versa. When the yield curve is flat ($\frac{\partial r(t)}{\partial t} = 0$), the instantaneous forward rate equals the spot rate exactly. \\
+The inverse relationship allows recovering the spot rate from the forward curve:
+\begin{align*}
+    t \cdot r(t) = \int_{0}^{t} f(s) ds \Rightarrow 
+    \boxed{
+    r(t) = \frac{1}{t} \int_{0}^{t} f(s) ds
+    }
+\end{align*}
+The spot rate is the average of instantaneous forward rates up to maturity $t$. This is one of the most interesting results in fixed income: the entire spot curve is encoded in the forward curve and vice versa.
+
+\subsection{Bootstrapping}
+The yield curve is not directly observable. What we observe in the market are prices of traded bonds at specific maturities. Bootstrapping is the iterative procedure that extracts the unobservable spot rates from those observable prices.
+
+\begin{definition}[Bootstrapping]
+    Bootstrapping is the process of extracting spot rates $r(t_1), \dots, r(t_{n})$ sequentially from observed bond prices, using already extracted rates to solve for the next one.
+\end{definition}
+
+\begin{proposition}
+    Given the observed bond price $P$, cash flows $CF_{i}$ and already extracted discount factors $Z(t_{1}), \dots, Z(t_{n - 1})$, the spot rate at maturity $n$ is:
+    \begin{align*}
+       r(n) &= \frac{1}{n} \cdot \ln \left(\frac{CF_n}{P - \sum_{i = 1}^{n-1} CF_{i} \cdot Z(i)} \right)
+    \end{align*}
+\end{proposition}
+
+\begin{proof}
+    Starting from the bond price equation under continuous compounding:
+    \begin{align*}
+        P &= \sum_{i = 1}^{n} CF_i \cdot e^{-i r(i)} = \sum_{i = 1}^{n - 1} CF_{i} \cdot Z(i) + CF_n \cdot Z(n)
+    \end{align*}
+    Isolating $Z(n)$ and using that $Z(n) = e^{- r(n) \cdot n}$:
+    \begin{align*}
+        Z(n) &= \frac{P - \sum_{i = 1}^{n - 1} CF_{i} \cdot Z(i)}{CF_n} = e^{-r(n) \cdot n}
+    \end{align*}
+    Taking the logarithm and solving for $r(n)$:
+    \begin{align*}
+        r(n) &= \frac{1}{n} \cdot \ln \left(\frac{CF_n}{P - \sum_{i = 1}^{n-1} CF_{i} \cdot Z(i)} \right)
+    \end{align*}
+\end{proof}
+The procedure is sequential: $r(t_{1})$ is extracted first (typically from a short-term instrument like a T-Bill), then $r(t_{2})$ using the already known $Z(t_{1})$ and so on. Each step uses all previously extracted rates, which is why the method is called bootstrapping: each rate "pulls up" the next one.
+
+\subsection{Curve Interpolation}
+
+Bootstrapping gives us spot rates only at the maturities of traded bonds, typically $\{0.25, 0.5, 1, 2, 3, 5,\\
+7, 10, 20, 30\}$ years for the U.S. Treasuries. To price instruments at arbitrary maturities, we need to interpolate between these points.
+
+\begin{definition}[Linear Interpolation on Zero Rates]
+    For $t \in [t_{i}, t_{i + 1}]$, the linearly interpolated spot rate is:
+    \begin{align*}
+        r(t) = r(t_{i}) + \frac{r(t_{i + 1}) - r(t_{i})}{t_{i + 1} - t_{i}} (t - t_{i})
+    \end{align*}
+\end{definition}
+This is the simplest method: the spot rate moves linearly between observed nodes. It is easy to implement and understand, but has an important drawback: the implied forward rates are piecewise constant and exhibit discontinuous jumps at each node. In practice this means the forward curve has "kinks" at every tenor point, which is financially unrealistic.
+
+\begin{definition}[Cubic Spline Interpolation]
+    A cubic spline fits a piecewise cubic polynomial $S(t)$ such that on each interval $[t_{i}, t_{i + 1}]$:
+    \begin{align*}
+        S(t) = a_{i} + b_{i} (t - t_{i}) + c_{i} (t - t_{i})^{2} + d_{i} (t - t_{i})^{3}
+    \end{align*}
+    with the conditions that $S(t), S'(t)$ and $ S''(t)$ are all continuous at every interior node. This gives a system of $4(n - 1)$ unknowns with $4(n - 1)$ equations (matching values, first and second derivatives at each node, plus two boundary conditions).
+\end{definition}
+
+The key advantage over linear interpolation is that the cubic spline produces a smooth forward curve. Since $f(t) = r(t) + t \cdot \frac{\partial r(t)}{\partial t}$, the forward rate depends on $\frac{\partial r(t)}{\partial t}$: a discontinuous $\frac{\partial r(t)}{\partial t}$ from linear interpolation generates a discontinuous forward curve, while the cubic spline guarantees $\frac{\partial r(t)}{\partial t}$ is continuous everywhere. \\
+The two standard boundary conditions used in practice are:
+\begin{enumerate}
+    \item \textbf{Natural Spline:} $S''(t_{1}) = S''(t_{n}) = 0$, meaning no curvature at the endpoints. Simple and the most common choice.
+    \item \textbf{Not-a-Knot:} forces $S'''(t)$ to be continuous at the second and second-to-last nodes. Generally produces a better behavior at the boundaries and is the default in \texttt{scipy.interpolate\\.CubicSpline}.
+\end{enumerate}
+
+\begin{proposition}
+    Linear interpolation on zero rates implies piecewise constant forward rates with jumps at nodes. Cubic spline interpolation implies continuous forward rates everywhere.
+\end{proposition}
+
+\begin{proof}
+    Recall the instantaneous forward rate formula $f(t) = r(t) + t \cdot r'(t)$. Under linear interpolation we have that:
+    \begin{align*}
+        r'(t) = \frac{r(t_{i + 1}) - r(t_{i})}{t_{i + 1} - t_{i}}
+    \end{align*}
+    is constant on each interval but jumps at nodes, so $f(t)$ also jumps. Under cubic spline, $r'(t)$ is continuous by construction, so $f(t)$ is continuous everywhere.
+\end{proof}
+
+In \texttt{curves.py} both methods are implemented and compared. The cubic spline is the default for all downstream calculations.
+
+Both linear interpolation and cubic splines are non-parametric methods: they fit the observed data without imposing any financial structure on the curve. The Nelson-Siegel-Svensson model takes a fundamentally different approach: it parametrizes the entire yield curve with a small number of economically interpretable parameters.
+
+\begin{definition}[Nelson-Siegel-Svensson Model]
+    The model starts with the instantaneous forward rate, which is specified as:
+    \begin{align*}
+        f(t) = \beta_{0} + \beta_{1} e^{-t/\lambda_{1}} + \beta_{2} \frac{t}{\lambda_{1}} e^{-t/\lambda_{1}} + \beta_{3} \frac{t}{\lambda_{2}} e^{-t/\lambda_{2}}
+    \end{align*}
+    Integrating $r(t) = \frac{1}{t} \int_{0}^{t} f(s) ds$ (the result from section \ref{subsec:fwdrates}), the spot rate curve is:
+    \begin{align*}
+        \boxed{
+        r(t) = \beta_{0} + \beta_{1} \frac{1 - e^{-t/\lambda_{1}}}{t/\lambda_{1}} + \beta_{2} \left(\frac{1 - e^{-t/\lambda_{1}}}{t/\lambda_{1}} - e^{-t/\lambda_{1}}\right) + \beta_{3} \left(\frac{1 - e^{-t/\lambda_{2}}}{t/\lambda_{2}} - e^{-t/\lambda_{2}} \right)
+        }
+    \end{align*}
+    with parameters $\beta = (\beta_{0}, \beta_{1}, \beta_{2}, \beta_{3}, \lambda_{1}, \lambda_{2})$.
+\end{definition}
+
+The first three terms constitute the original \cite{nelson1987parsimonious} model; the fourth term is the \cite{svensson1994estimating} extension that adds a second hump to accommodate more complex curve shapes. \\
+The parameters have direct economic interpretations. Taking limits:
+\begin{align*}
+    \lim_{t \to \infty} r(t) = \beta_{0} \quad \lim_{t \to 0} r(t) = \beta_{0} + \beta_{1}
+\end{align*}
+so $\beta_{0}$ is the long-run level of interest rates and $\beta_{0} + \beta_{1}$ is the short-run level. The parameters $\beta_{2}$ and $\beta_{3}$ control the magnitude of the humps at intermediate maturities, with $\lambda_{1}$ and $\lambda_{2}$ controlling where those humps are located. For a normal upward-sloping curve, $\beta_{1} < 0$ (short rates below long rates) and $\beta_{2} > 0$ (a positive hump in the medium term).
+
+The parameters are estimated by minimizing the sum of squared errors between model rates and observed rates:
+\begin{align*}
+    \hat{\beta} = \arg \min_{\beta} \sum_{i = 1}^{n} (r_{\text{obs}}(t_{i}) - r(t_{i}; \beta))^{2}
+\end{align*}
+subject to $\beta_{0} > 0$ and $\lambda_{1}, \lambda_{2} > 0$. This is a nonlinear least squares problem solved numerically via L-BFGS-B optimization in \color{magenta} \texttt{curves.py} \color{black}. \\
+In the notebook, we use synthetic data of spot rates to compare the three interpolation methods and its respective forward curves. In Figure \ref{fig:02_interpolation_comparison} we can see the smoothness, discontinuity and flattening of forward rates mentioned above.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1 \linewidth]{Figures/02_interpolation_comparison.png}
+    \caption{Three Interpolation Methods}
+    \label{fig:02_interpolation_comparison}
+\end{figure}
+
+Taking 4 key-dates (Pre-COVID, COVID shock, Fed Hikes Peak Dec-2022, and Jan-2025), we see plotted the NSS yield curve for spot and forward rates. Figure \ref{fig:02_historical_curves} shows how sloping spot curve implies that the market expects higher rates in the future.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1 \linewidth]{Figures/02_historical_curves.png}
+    \caption{NSS Historical Comparison}
+    \label{fig:02_historical_curves}
+\end{figure}
+
+The three Nelson-Siegel factors (level $\beta_{0}$, slope $\beta_{1}$ and curvature $\beta_{2}$) are not arbitrary. \cite{litterman1991volatility} showed empirically that the three first components of the yield curve changes explains over $99\%$ of total variance and correspond exactly to parallel shifts (level), tilts (slope) and humps (curvature). This connection between the parametric NSS model and the statistical PCA of module \ref{sec:M4} is one of the deepest results in fixed income and provides a powerful cross-validation: a well-calibrated NSS model should produce factors that align closely with the PCA components.
+
+
+\subsection{Conclusions and Key Takeaways}
+
+\begin{itemize}
+    \item The discount factor $Z(t) = e^{-r(t) \cdot t}$ 
+    is the fundamental object of the yield curve: 
+    all pricing, forward rates and bootstrapping 
+    results follow from it.
+    
+    \item The instantaneous forward rate $f(t) = 
+    r(t) + t \cdot r'(t)$ encodes the slope of the 
+    spot curve and is continuous only when $r'(t)$ 
+    is continuous, a property guaranteed by the 
+    cubic spline but not by linear interpolation.
+    
+    \item NSS imposes an economic structure on the 
+    curve with six interpretable parameters: 
+    long-run level $\beta_0$, short-run adjustment 
+    $\beta_1$, two curvature components $\beta_2, 
+    \beta_3$ and two decay parameters $\lambda_1, 
+    \lambda_2$. It is the standard model of central 
+    banks worldwide precisely because its factors 
+    correspond to the three dominant modes of 
+    yield curve variation.
+\end{itemize}
+
+The yield curve $r(t)$ and its discount factors $Z(t_i)$ are now complete building blocks. With them we can price any fixed-rate instrument by discounting its cash flows at maturity-specific rates rather than a single constant. However, having a precise price is only the first step. The next question is how sensitive that price is to changes in the curve: if rates rise by 5 basis points at the 5-year node, how much does a bond portfolio lose? Does the exposure come from the short end or the long end of the curve? These questions define \textbf{interest rate risk}, and answering them requires moving from a single DV01 number, which assumes a parallel shift of the entire curve, to a full vector of \textbf{Key Rate Durations} that decomposes the sensitivity node by node.
+
+Formally, the parallel DV01 of Module \ref{sec:M1} 
+measured:
+
+\begin{align*}
+    \text{DV01} = -\frac{dP}{dy} \cdot 0.0001
+\end{align*}
+
+under the assumption $\frac{\partial r(t_i)}
+{\partial y} = 1$ for all $i$. Module \ref{sec:M3} 
+relaxes this assumption and measures instead:
+
+\begin{align*}
+    \text{KRD}_k = -\frac{1}{P}
+    \frac{\partial P}{\partial r(t_k)}
+\end{align*}
+
+for each node $t_k$ independently, yielding a 
+complete picture of where interest rate risk lives 
+along the curve.
+
+\newpage
+
+\section{Module 3: Sensitivity Analysis}
+\label{sec:M3}
+
+\begin{tcolorbox}[title = Python Implementation, colback = pythonyellow!70!white, colframe = pythonblue]
+    \textbf{Module:} \color{magenta} \texttt{src/sensitivity.py} \color{black} \\
+    \textbf{Classes:} \color{codegreen} \texttt{BondSensitivity} \color{black} and \color{codegreen} \texttt{PortfolioSensitivity} \color{black} \\
+    \textbf{Notebook:} \texttt{notebooks/03\_sensitivity.ipynb}
+\end{tcolorbox}
+
+\subsection{Introduction and Class Hierarchy}
+
+Module \ref{sec:M2} delivered a complete yield curve $r(t)$ and its discount factors $Z(t_{i})$. This module asks: how sensitive is the value of a bond or portfolio to movements in that curve? Module \ref{sec:M1} answered this with a single number, the parallel DV01, under the restrictive assumption that all rates move by the same amount. Here we relax that assumption entirely. The key insight is that interest rate risk is not scalar but \textbf{vectorial}: a portfolio has a different sensitivity at each point of the curve, and understanding that vector is what separates a risk manager who can hedge from one who cannot. The two classes in \texttt{src/sensitivity.py} implement this decomposition for a single bond and for a portfolio.
+
+\begin{verbatim}
+src/sensitivity.py
+|
+|-- BondSensitivity
+|       |
+|       |-- Inputs
+|       |       |-- bond   VanillaBond instance
+|       |       |-- curve  DiscountCurve instance
+|       |
+|       |-- Pricing
+|       |       |-- _price(curve)     P = sum CF_i * Z(t_i)
+|       |
+|       |-- Parallel Risk
+|       |       |-- dv01_parallel()
+|       |       |-- modified_duration_curve()
+|       |
+|       |-- Key Rate Risk
+|       |       |-- key_rate_durations()   KRD_k vector
+|       |       |-- dv01_by_key_rate()     DV01_k vector
+|       |
+|       |-- Summary
+|               |-- summary()    All metrics + additivity check
+|
+|-- PortfolioSensitivity
+        |
+        |-- Inputs
+        |       |-- bonds    List of VanillaBond
+        |       |-- curve    DiscountCurve
+        |       |-- weights  Units held per bond
+        |       |-- labels   Bond identifiers
+        |
+        |--| Aggregation
+        |       |-- portfolio_value()
+        |       |-- dv01_parallel()
+        |       |-- key_rate_durations()   Value-weighted KRD
+        |       |-- dv01_by_key_rate()     Summed DV01_k
+        |
+        |--| Applications
+        |       |-- scenario_pnl(curve_shift)
+        |       |-- hedge_ratios(hedges)
+        |
+        |--| Reporting
+                |-- summary_table()    One row per bond + total
+\end{verbatim}
+
+The design mirrors the mathematical structure exactly. \color{codegreen} \texttt{BondSensitivity} \color{black} wraps a \color{codegreen} \texttt{VanillaBond} \color{black} and a \color{codegreen} \texttt{DiscountCurve} \color{black} and computes sensitivities by perturbing the curve node by node. \color{codegreen} \texttt{Portfolio\\Sensitivity} \color{black} aggregate those individual vectors across bonds:
+
+\begin{lstlisting}[style = Pythonstyle]
+    # Single bond sensitivity
+    sens = BondSensitivty(bond, curve)
+    krd = sens.key_rate_durations() # {t_k: KRD_k}
+    dv01 = sens.dv01_by_key_rate() # {t_k: DV01_k}
+    sm = sens.summary() # Additivity check included
+
+    # Portfolio aggregation
+    port = PortfolioSensitivity(
+            bonds = [bond_2y, bond_7y, bond_30y],
+            curve = curve,
+            weights = [10, 5, 2]
+            )
+    pnl = port.scenario_pnl(curve_shift) # dv ~ -DV01 * dr
+\end{lstlisting}
+
+\subsection{Parallel Shift DV01}
+
+In module \ref{sec:M1} we defined DV01 as the price sensitivity of a single bond to a 1 bp parallel shift in its yield. Here we extend this concept to the full yield curve setting, where the discount curve $r(t)$ replaces the constant yield $y$. \\
+The price of a bond under the full curve is:
+\begin{align*}
+    P &= \sum_{i = 1}^{n} CF_{i} \cdot Z(t_{i}) = \sum_{i = 1}^{n} CF_{i} \cdot e^{-r(t_{i}) \cdot t_{i}}
+\end{align*}
+
+\begin{definition}[Parallel Shift]
+    A parallel shift of $\Delta y$ moves every point on the curve by the same amount
+    \begin{align*}
+        r(t) \to r(t) + \Delta y , \forall t
+    \end{align*}
+\end{definition}
+
+The DV01 under a parallel shift is then:
+\begin{align*}
+    \text{DV01}_{\text{Parallel}} &= - \frac{\partial P}{\partial y} \cdot 0.0001 \approx \frac{P(r(t) - 0.0001) - P(r(t) + 0.0001)}{2}
+\end{align*}
+where the numerical approximation uses a central finite difference. This is identical to the single-bond DV01 of module \ref{sec:M1} when the curve is flat, but extends naturally to arbitrary curve shapes. \\
+In terms of the Modified Duration:
+\begin{align*}
+    \text{DV01}_{\text{Parallel}} = D_{\text{mod}} \cdot P \cdot 0.0001
+\end{align*}
+where $D_{\text{mod}}$ is computed under the full curve rather than a single yield. Figure \ref{fig:03_dv01_vs_maturity} shows DV01 against maturity and the price impact of a change of 100 bps in the yield. We can see that the longer the maturity, the longer the DV01.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1 \linewidth]{Figures/03_dv01_vs_maturity.png}
+    \caption{DV01 against Maturity and Price Impact of $\Delta y = 1\%$}
+    \label{fig:03_dv01_vs_maturity}
+\end{figure}
+
+The parallel DV01 captures the aggregate interest rate risk of the bond but tells us nothing about which part of the the curve drives that risk. This limitation motivates the \textit{Key Rate Durations}.
+
+\subsection{Key Rate Durations}
+
+As we noticed before, the parallel shift assumption is a significant simplification. In practice, yield curves do not move in parallel: short rates and long rates respond differently to monetary policy, economic conditions and supply-demand dynamics. Key Rate durations (KRDs), introduced by \cite{ho1992key}, decompose the total interest rate sensitivity into contributions from each point on the curve.
+\begin{definition}[Key Rate Durations]
+    The key rate duration at a node $t_{k}$ is the price sensitivity of the bond to a 1 bp shift at that specific maturity, holding all the other rates constant:
+    \begin{align*}
+        \text{KRD}_{k} &= -\frac{1}{P} \frac{\partial P}{\partial r(t_{k})}
+    \end{align*}
+\end{definition}
+
+In practice this is computed numerically via central finite differences:
+\begin{align*}
+    \text{KRD}_{k} \approx \frac{P(r(t_{k}) - \varepsilon) - P(r(t_{k}) + \varepsilon)}{2 \varepsilon \cdot P}
+\end{align*}
+where $\varepsilon = 0.0001$ (1 bp) and all the other rates remain fixed. The result is a vector of sensitivities, one per key rate node:
+\begin{align*}
+    \mathbf{KRD} = (\text{KRD}_{1}, \text{KRD}_{2}, \dots, \text{KRD}_{m})
+\end{align*}
+KRD is not only a partial derivative, when a node changes, the movement spreads across the adjacent points: the shape of the perturbation depends of the interpolation method chosen (see for instance module \ref{sec:M2}). The KRD vector has two fundamental properties.
+\begin{enumerate}
+    \item \textbf{Additivity:} The sum of all KRDs equals the Modified Duration under the full curve:
+    \begin{align*}
+        \sum_{k = 1}^{m} \text{KRD}_{k} = D_{\text{mod}}
+    \end{align*}
+    This provides a natural validation: If the KRDs do not sum to the total Modified Duration, there is an error in the implementation.
+    \begin{figure}[ht]
+        \centering
+        \includegraphics[width=1 \linewidth]{Figures/03_krd_by_bond.png}
+        \caption{Key Rate Duration by Bond Type}
+        \label{fig:03_krd_by_bond}
+    \end{figure}
+    Figure \ref{fig:03_krd_by_bond} shows four bonds (2Y 4\%, 7Y 5\%, 30Y 5\% and 10Y 0\%) and shows the KRD across the key rate nodes, also calculating the modified duration, confirming numerically the additivity property. We have to be careful, because this result is true only when there is continuous capitalization of the yield. Additivity is exact when each node of bootstrapping corresponds exactly yo a cash flow, which is guaranteed under continuous capitalization. In discrete capitalization there is a small cross term that makes additivity an approximated property.
+    \item \textbf{Locality:} $\text{KRD}_{k}$ is large when cash flows are concentrated near maturity $t_{k}$ and small otherwise. A zero coupon bond maturing at $t_{k}$ has $\text{KRD}_{k} = t_{k}$ and all the other KRDs equal to zero. 
+\end{enumerate}
+
+\begin{proposition}
+    For a bond price under continuously compounded curve, $\sum_{k = 1}^{m} \text{KRD}_{k} = D_{\text{mod}}$.
+\end{proposition}
+
+\begin{proof}
+    A parallel shift $\Delta y$ can be decomposed as the sum of individual key rate shifts of $\Delta y$ at each node. Since price is linear in small shifts:
+    \begin{align*}
+        - \frac{1}{P} \frac{\partial P}{\partial y} &= - \frac{1}{P} \sum_{k = 1}^{m} \frac{\partial P}{\partial r(t_{k})} = \sum_{k = 1}^{m} \text{KRD}_{k}
+    \end{align*}
+    The left-hand side is exactly $D_{\text{mod}}$ by definition.
+\end{proof}
+
+The dollar sensitivity at each node is:
+\begin{align*}
+    \text{DV01}_{k} = \text{KRD}_{k} \cdot P \cdot 0.0001
+\end{align*}
+So the total DV01 satisfies:
+\begin{align*}
+    \text{DV01}_{\text{Parallel}} = \sum_{k = 1}^{m} \text{DV01}_{k}
+\end{align*}
+This decomposition is directly what risk systems report to risk managers: not a single number but a vector of sensitivities showing exactly which part of the curve a position is exposed to.
+
+\subsection{Portfolio Sensitivity}
+
+The KRD framework extends naturally from a single bond to a portfolio. Let a portfolio consists of $N$ bonds with prices $P_{j}$ and KRD vectors $\mathbf{KRD}^{(j)}$, held in quantities $w_{j}$. The portfolio value is:
+\begin{align*}
+    V = \sum_{j = 1}^{N} w_{j} P_{j}
+\end{align*}
+The portfolio KRD at a node $t_{k}$ is the value-weighted average:
+\begin{align*}
+    \text{KRD}_{k}^{\text{portfolio}} = \frac{\sum_{j = 1}^{N} w_{j} P_{j} \cdot \text{KRD}_{k}^{(j)}}{V}
+\end{align*}
+and the portfolio DV01 at each node:
+\begin{align*}
+    \text{DV01}_{k}^{\text{portfolio}} = \sum_{j = 1}^{N} w_{j} \cdot \text{DV01}_{k}^{(j)}
+\end{align*}
+This vector representation enables two powerful risk management applications.
+\begin{enumerate}
+    \item \textbf{Hedging:} Given a target portfolio with DV01 vector $\mathbf{d}^{\text{target}}$ and a set of hedging instruments with DV01 vectors $\mathbf{d}^{(j)}$, the hedge ratios $h_{j}$ solves:
+    \begin{align*}
+        \sum_{j} h_{j} \mathbf{d}^{(j)} = - \mathbf{d}^{\text{target}}
+    \end{align*}
+    This is a linear system that can be solved exactly if the number of instruments equals the number of key rate nodes, or approximately via least squares otherwise. A perfect hedge of KRDs does not only protect against parallel shifts, but against curve shifts (butterfly shifts) and slope changes (twists).
+
+    \item \textbf{Scenario Analysis:} Given a non-parallel curve shift $\Delta \mathbf{r} = (\Delta r(t_{1}), \dots, \Delta r(t_{m}))$, the approximate portfolio $P\&L$ is:
+    \begin{align*}
+        \Delta V \approx -V \sum_{k = 1}^{m} \text{KRD}_{k} \cdot \Delta r(t_{k}) = - \mathbf{d}^{\text{portfolio}} \cdot \Delta \mathbf{r}
+    \end{align*}
+    This is the inner product of the DV01 vector with the curve shift vector: a simple but powerful tool for stress testing.
+\end{enumerate}
+
+Consider a portfolio with three bonds: 2Y 4\%, 7Y 5\%, 30Y 5\%.
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1 \linewidth]{Figures/03_portfolio_krd.png}
+    \caption{Stacked KRD of a 3-Bond-Portfolio}
+    \label{fig:03_portfolio_krd}
+\end{figure}
+Figure \ref{fig:03_portfolio_krd} shows the stacked key rate duration by nodes, where the highest KRDs concentrate at the maturities of the bonds conforming the portfolio.
+
+\subsection{Conclusions and Key Takeaways}
+
+\begin{itemize}
+    \item The parallel DV01 is a useful summary 
+    statistic but hides the true structure of risk. Two portfolios with identical parallel DV01 can have very different exposures to curve steepening, flattening or butterfly moves, only the KRD vector reveals this.
+
+    \item The additivity property $\sum_{k} \text{KRD}_k = D_{\text{mod}}$ is both a mathematical result and a practical validation tool: any implementation that violates it contains an error.
+
+    \item Hedge ratios from the linear system $\sum_j h_j \mathbf{d}^{(j)} = -\mathbf{d}^{\text{target}}$ may require short positions. This is economically correct and standard in practice: a portfolio concentrated at the long end is hedged by shorting long-dated instruments, not by buying short-dated ones.
+\end{itemize}
+
+The KRD vector $\mathbf{KRD} \in \mathbb{R}^m$ has one entry per curve node (typically 10 or more). Working with this full vector is informative but computationally expensive and statistically redundant: the nodes are highly correlated, and most of the movement in the yield curve is driven by a small number of underlying forces. A natural question is: can we find a lower-dimensional representation that captures most of the risk without losing important information? The answer is yes, and it comes from the covariance structure of historical yield curve changes. If $\mathbf{\Sigma}$ is the covariance matrix of daily rate changes, then the portfolio P\&L variance is:
+\begin{align*}
+    \text{Var}(\Delta V) = \mathbf{d}^{\mathrm{T}} 
+    \boldsymbol{\Sigma} \, \mathbf{d}
+\end{align*}
+where $\mathbf{d} \in \mathbb{R}^m$ is the DV01 vector of this module. Evaluating this expression requires estimating and inverting $\mathbf{\Sigma}$, a full $m \times m$ matrix. Module \ref{sec:M4} decomposes $\mathbf{\Sigma}$ via PCA into three dominant eigenvectors: \textit{level}, \textit{slope} and \textit{curvature} and shows that:
+\begin{align*}
+    \text{Var}(\Delta V) \approx \sum_{k=1}^{3} 
+    \lambda_k \left(\mathbf{v}_k^{\mathrm{T}} 
+    \mathbf{d}\right)^2
+\end{align*}
+reducing the problem from a full $m \times m$ matrix to three scalar projections. The DV01 vector $\mathbf{d}$ computed here is the direct input to that calculation.
+
+\newpage
+
+\section{Module 4: PCA on Term Structure}
+\label{sec:M4}
+
+\begin{tcolorbox}[title = Python Implementation, colback = pythonyellow!70!white, colframe = pythonblue]
+    \textbf{Module:} \color{magenta} \texttt{src/pca.py} \color{black} \\
+    \textbf{Classes:} \color{codegreen} \texttt{YieldCurvePCA} \color{black} and \color{codegreen} \texttt{PCARiskManager} \color{black} \\
+    \textbf{Notebook:} \texttt{notebooks/04\_pca.ipynb}
+\end{tcolorbox}
+
+\subsection{Introduction and Class Hierarchy}
+
+Modules \ref{sec:M2} and \ref{sec:M3} together produce 
+a yield curve $r(t)$ and a KRD DV01 vector 
+$\mathbf{d} \in \mathbb{R}^{m}$ that describes where 
+risk lives along the curve. The natural next question 
+is: can we compress that $m$-dimensional risk vector 
+into something smaller without losing important 
+information? The answer exploits a remarkable empirical regularity. Daily changes in yield curves across all major markets are highly correlated: when rates move, they rarely 
+move in arbitrary directions. Instead they move along a small number of dominant patterns (level, slope and curvature) that account for over $99\%$ of total variance. PCA discovers these patterns statistically from historical data and transforms the $m \times m$ covariance problem of Module \ref{sec:M3} into three scalar projections. The two classes in \color{magenta} \texttt{src/pca.py} \color{black} implement this decomposition and connect it back to the risk vector 
+$\mathbf{d}$ from Module \ref{sec:M3}.
+
+\begin{verbatim}
+src/pca.py
+|
+|-- YieldCurvePCA
+|       |
+|       |-- Inputs
+|       |       |-- df_yields   Historical yield panel
+|       |       |-- n_factors   Components to retain
+|       |
+|       |-- Core (_fit)
+|       |       |-- X           Daily changes matrix
+|       |       |-- Sigma       Covariance matrix
+|       |       |-- eigenvalues lambda_1 >= ... >= lambda_m
+|       |       |-- eigenvectors v_1, ..., v_m
+|       |
+|       |-- Variance
+|       |       |-- variance_explained(K)  R2_K
+|       |       |-- variance_table()       Full table
+|       |
+|       |-- Factor Structure
+|       |       |-- loadings(K)            V_K matrix
+|       |       |-- scores(K)              F = X @ V_K
+|       |       |-- factor_shock(k, sigma) Stress scenario
+|       |
+|       |-- Reconstruction
+|       |       |-- reconstruct(K)         X_hat = F_K @ V_K.T
+|       |       |-- reconstruction_error(K) MSE analytical
+|       |
+|       |-- NSS Alignment
+|               |-- nss_alignment(lambda)  R2 per factor
+|-- PCARiskManager
+        |
+        |-- Inputs
+        |       |-- pca       YieldCurvePCA instance
+        |       |-- dv01_vec  KRD DV01 vector from M3
+        |
+        |-- Factor Risk
+        |       |-- factor_dv01()      DV01_PCk = v_k.T @ d
+        |       |-- total_dv01()       Sum of KRD DV01s
+        |       |-- pnl_variance(K)    Var(dV) exact + approx
+        |
+        |-- Immunization
+        |       |-- immunization_check()  DV01_PC1 = 0?
+        |
+        |-- Scenarios
+                |-- scenario_pnl(shocks)
+                |-- summary()
+\end{verbatim}
+
+The two classes are designed to be used in tandem.
+\color{codegreen} \texttt{YieldCurvePCA} \color{black} is fitted once on historical data and exposes the eigenstructure of the covariance matrix. \color{codegreen} \texttt{PCARiskManager} \color{black} takes a fitted PCA object and a DV01 vector from Module \ref{sec:M3} and translates node-level risk into factor-level risk:
+
+\begin{lstlisting}[style=Pythonstyle]
+# Fit PCA on historical yields
+pca = YieldCurvePCA(df_yields, n_factors = 3)
+
+# Connect to portfolio DV01 from Module 3
+rm = PCARiskManager(pca, dv01_vec)
+
+# Factor DV01 decomposition
+fdv01 = rm.factor_dv01()
+# {'PC1 Level': 0.082, 'PC2 Slope': -0.011, ...}
+
+# P&L variance under factor model
+pnl = rm.pnl_variance()
+
+# Immunization check: is DV01_PC1 ~ 0?
+imm = rm.immunization_check()
+\end{lstlisting}
+
+\subsection{Motivation}
+
+The yield curve does not move randomly: when the FED raises rates, the entire curve tends to shift upward. When the economy slows, short rates fall faster than long rates, steepening the curve. These patterns suggest that the high-dimensional object we call the yield curve (a vector of rates at 10 or more maturities) is driven by a small number of underlying factors. Principal Component Analysis (PCA) formalizes this intuition. Given a historical panel of yield curve changes, PCA finds the directions of maximum variance in the data: the directions along which the curve moves the most. \cite{litterman1991volatility} showed empirically that three such directions explains over $99\%$ of total yield curve variance, and that they correspond exactly to parallel shifts (level), tilts (slope) and humps (curvature). This result has profound implications both for risk management and for the connection with the NSS model of module \ref{sec:M2}. To motivate this, notice how different maturities correlate.
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1 \linewidth]{Figures/04_covariance.png}
+    \caption{Covariance and Correlation Matrix}
+    \label{fig:04_covariance}
+\end{figure}
+Figure \ref{fig:04_covariance} shows how maturities co-move and that they are highly correlated at neighboring maturities and less so at the extremes.
+
+\subsection{PCA Framework}
+
+Let $\Delta \mathbf{r}_{t} \in \mathbb{R}^{m}$ be the vector of daily changes in spot rates at $m$ maturities on day $t$:
+\begin{align*}
+    \Delta \mathbf{r}_{t} = (\Delta r(t_{1}), \Delta r(t_{2}), \cdots, \Delta r(t_{m}))^{\mathrm{T}}
+\end{align*}
+Over $T$ trading days we observe the data matrix:
+\begin{align*}
+    \mathbf{X} \in \mathbb{R}^{T \times m}
+\end{align*}
+where row $t$ is the vector of rate changes on day $t$. After centering (subtracting the column means), the empirical covariance matrix is:
+\begin{align*}
+    \Sigma = \frac{1}{T - 1} \mathbf{X}^{T} \mathbf{X} \in \mathbb{R}^{m \times m}
+\end{align*}
+
+\begin{definition}[Principal Components]
+    The principal components of $\mathbf{X}$ are the eigenvectors of $\Sigma$, obtained via the spectral decomposition:
+    \begin{align*}
+        \Sigma = \mathbf{V} \mathbf{\Lambda} \mathbf{V}^{\mathrm{T}}
+    \end{align*}
+    where $\Lambda = \text{diag}(\lambda_{1}, \lambda_{2}, \dots, \lambda_{m})$ with $\lambda_{1} \geq \lambda_{2} \geq \cdots \geq \lambda_{m} \geq 0$ are the eigenvalues and $\mathbf{V} = [\mathbf{v}_{1} | \mathbf{v}_{2} | \cdots | \mathbf{v}_{m}]$ is the orthogonal matrix of eigenvectors, so that $\mathbf{V}^{\mathrm{T}} \mathbf{V} = \mathbf{I}$.
+\end{definition}
+
+Each eigenvector $\mathbf{v}_{k} \in \mathbb{R}^{m}$ is a \textit{factor loading vector}: it describes a pattern of simultaneous rate movements across all maturities. The corresponding eigenvalue $\lambda_{k}$ equals the variance explained by that factor.
+
+\begin{definition}[Factor Scores]
+    The projection of the data onto the $k$-th principal component is the factor score:
+    \begin{align*}
+        \mathbf{f}_{k} = \mathbf{X} \mathbf{v}_{k} \in \mathbb{R}^{T}
+    \end{align*}
+    It represents the time series of how much each daily curve move was driven by factor $k$.
+\end{definition}
+
+The total variance in the data is the trace of the covariance matrix:
+\begin{align*}
+    \text{Total Variance} = \text{tr}(\Sigma) = \sum_{k = 1}^{m} \lambda_{k}
+\end{align*}
+
+The fraction of variance explained by the first $K$ principal components is:
+\begin{align*}
+    R^{2}_{K} = \frac{\sum_{k = 1}^{K} \lambda_{k}}{\sum_{k = 1}^{m} \lambda_{k}}
+\end{align*}
+In practice for U.S. Treasury yields:
+\begin{align*}
+    R^{2}_{1} \approx 80 \% \quad R^{2}_{2} \approx 95 \% \quad R^{2}_{3} \approx 99 \%
+\end{align*}
+This means that three numbers (the scores on three factors) capture essentially all the information in the daily movement of ten or more yield curve points. The remaining factors are noise. Using synthetic data in the notebook, we found the following results.
+
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=1 \linewidth]{Figures/04_variance_explained.png}
+    \caption{Variance Explained by Component}
+    \label{fig:04_variance_explained}
+\end{figure}
+
+Figure \ref{fig:04_variance_explained} shows the explained variance across components, and it is clear that a $\approx 98\%$ of the variance is explained by the first 3 components.
+
+\subsection{The Three Factors (Level, Slope and Curvature)}
+
+The empirical result of \cite{litterman1991volatility} is that the three dominant eigenvectors have stable and economically interpretable shapes across markets and time periods:
+\begin{enumerate}
+    \item \textbf{PC1 (Level):} The first eigenvector $\mathbf{v}_{1}$ has entries of approximately equal sign and magnitude across all maturities. A unit move along PC1 shifts the entire curve up or down by roughly the same amount at every maturity. This is, the parallel shift scenario of module \ref{sec:M3}.
+    \begin{align*}
+        v_{1, j} \approx \frac{1}{\sqrt{m}} , \forall j
+    \end{align*}
+    
+    \item \textbf{PC2 (Slope):} The second eigenvector $\mathbf{v}_{2}$ has positive entries at short maturities and negative entries at long maturities (or vice versa depending on sign convention). A unit move along PC2 steepens or flattens the curve: short rates move in the opposite direction to long rates.
+
+    \item \textbf{PC3 (Curvature):} The third eigenvector $\mathbf{v}_{3}$ has entries that are positive at short and long maturities and negative at intermediate maturities (or vice versa). A unit move along PC3 creates a hump in the middle of the curve, corresponding to the curvature parameter $\beta_{2}$ in the NSS model.
+\end{enumerate}
+
+This connection with NSS is not coincidental. Both frameworks are describing the same underlying structure: the yield curve lives in a low-dimensional subspace spanned by level, slope and curvature. NSS imposes this structure parametrically from the start; PCA discovers it statistically from the data. 
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1 \linewidth]{Figures/04_eigenvectors.png}
+    \caption{Eigenvectors vs Maturities}
+    \label{fig:04_eigenvectors}
+\end{figure}
+
+We can visualize the eigenvectors associated with the first three components in Figure \ref{fig:04_eigenvectors}. We can easily see what we stated, the first eigenvector $\mathbf{v}_{1}$ (level) is relatively flat across all maturities (parallel shift), the second eigenvector $\mathbf{v}_{2}$ (slope) has positive entries at short and negative entries at long maturities. The third eigenvector $\mathbf{v}_{3}$ (curvature) has positive entries in the very short maturities, negative entries at medium maturities and positive again at long maturities. 
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1 \linewidth]{Figures/04_factor_scores.png}
+    \caption{Factor Scores over Time}
+    \label{fig:04_factor_scores}
+\end{figure}
+
+Figure \ref{fig:04_factor_scores} shows the time series of each factor score $f_{k,t} = \mathbf{X}_t \cdot \mathbf{v}_k$ over the sample period. Three observations stand out. First, the PC1 score has the largest amplitude by construction: its variance equals $\lambda_1$, the largest eigenvalue, so it is the most volatile series. Second, PC2 and PC3 scores are progressively quieter, reflecting their smaller eigenvalues. Third, the scores carry economic content: sustained negative values of the PC2 score correspond to periods of yield curve inversion (short rates rising relative to long rates), while sharp spikes in the PC3 score correspond to episodes where the belly of the curve moved independently of the wings, typical during central bank forward guidance transitions.
+
+\subsection{PCA Reconstruction and Risk Management}
+
+Given the first $K$ principal components, the yield curve change on day $t$ can be approximated as
+\begin{align*}
+    \Delta \mathbf{r}_{t} \approx \sum_{k = 1}^{K} f_{k, t} \cdot \mathbf{v}_{k} = \mathbf{V}_{K} \mathbf{f}_{K, t}
+\end{align*}
+where $\mathbf{V}_{K} \in \mathbb{R}^{m \times K}$ contains the first $K$ eigenvectors and $\mathbf{f}_{K, t} \in \mathbb{R}^{K}$ are the factor scores on day $t$. The reconstruction error is:
+\begin{align*}
+    \varepsilon_{t} = \Delta \mathbf{r}_{t} - \mathbf{V}_{K} \mathbf{f}_{K, t}
+\end{align*}
+and its mean squared error across all days and maturities is exactly:
+\begin{align*}
+    \text{MSE} = \frac{1}{T} \sum_{t = 1}^{T} \| \varepsilon_{t} \|^{2} = \sum_{k = K + 1}^{m} \lambda_{k}
+\end{align*}
+The sum of the discarded eigenvalues. This provides a clean analytical formula for the reconstruction error without having to compute it empirically. A powerful application of the reconstruction is the definition of stress scenarios. Instead of moving nodes randomly, we can move the factors $x$ standard deviations and see what happens, generating a plausible market scenario. 
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1\linewidth]{Figures/04_reconstruction.png}
+    \caption{PCA Reconstruction}
+    \label{fig:04_reconstruction}
+\end{figure}
+This reconstruction error is visualized in Figure \ref{fig:04_reconstruction}, where we can see the clear match between the reconstructed yield curve and the actual $\Delta \mathbf{r}_{t}$.\\
+The PCA decomposition transforms the problem of managing risk at $m$ correlated nodes into the problem of managing risk along $K$ uncorrelated factors. The DV01 of the bond portfolio along factor $k$ is:
+\begin{align*}
+    \text{DV01}_{PC_{k}} = \mathbf{v}_{k}^{\mathrm{T}} \cdot \mathbf{d}
+\end{align*}
+where $\mathbf{d} \in \mathbb{R}^{m}$ is the vector of key rate DV01 from module \ref{sec:M3}. Since the factors are orthogonal, the total variance of the portfolio $P\&L$ is:
+\begin{align*}
+    \text{Var}(\Delta V) = \sum_{k = 1}^{K} (\text{DV01}_{PC_{k}})^{2} \lambda_{k}
+\end{align*}
+This is much simpler than working with the full $m \times m$ covariance matrix of key rate sensitivities, and is exactly the computation performed by risk engines under a factor risk model. If we want for instance a \textit{level neutral} portfolio, we search for $\text{DV01}_{PC_{1}} = 0$, this is more robust than traditional immunization by duration because PCA knows that the curve does not change exactly parallel. This is known as \textbf{Factor Immunization}.
+
+\begin{proposition}
+    Under the factor model $\Delta \mathbf{r} = \sum_{k = 1}^{K} f_{k} \mathbf{v}_{k}$ with $\text{Var}(f_{k}) = \lambda_{k}$ and uncorrelated factors, the portfolio $P\&L$ variance is:
+    \begin{align*}
+        \text{Var} (\Delta V) &= \mathbf{d}^{\mathrm{T}} \mathbf{\Sigma} \mathbf{d} \approx \sum_{k = 1}^{K} (\mathbf{v}_{k}^{\mathrm{T}} \mathbf{d})^{2} \lambda_{k}
+    \end{align*}
+\end{proposition}
+
+\begin{proof}
+    The P\&L is $\Delta V = -\mathbf{d}^{\mathrm{T}} \Delta \mathbf{r}$. Its variance is:
+    \begin{align*}
+        \text{Var}(\Delta V) = \mathbf{d}^{\mathrm{T}} \mathbf{\Sigma} \mathbf{d} = \sum_{k = 1}^{m} (\mathbf{v}_{k}^{\mathrm{T}} \mathbf{d})^{2} \lambda_{k}
+    \end{align*}
+    Truncating to the first $K$ factors gives the approximation.
+\end{proof}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1 \linewidth]{Figures/04_factor_risk.png}
+    \caption{Factor Risk Management}
+    \label{fig:04_factor_risk}
+\end{figure}
+
+For a portfolio with three bonds (2Y 4\%, 7Y 5\%, 30Y 5\%), Figure \ref{fig:04_factor_risk} plots $\text{DV01}_{PC_{k}}$ against KRDs, and the total P\&L variance explained by each component. \\
+The connection between PCA and NSS runs deeper than a superficial analogy. Define the NSS loading vectors:
+\begin{align*}
+    \phi_{0} = 1 \quad \phi_{1}(j) = \frac{1 - e^{-t_{j}/\lambda}}{t_{j}/\lambda} \quad \phi_{2}(j) = \frac{1 - e^{-t_{j}/\lambda}}{t_{j}/\lambda} - e^{-t_{j}/\lambda}
+\end{align*}
+evaluated at each maturity $t_{j}$. These are the columns of the NSS design matrix. The claim is that the empirical eigenvectors $\mathbf{v}_{1}, \mathbf{v}_{2}, \mathbf{v}_{3}$ from PCA are well approximated by $\phi_{0}, \phi_{1}, \phi_{2}$ up to normalization and sign. This can be verified empirically: regress each PCA eigenvector onto the NSS loading vectors and compute the $R^{2}$. In practice, $R^{2} = 0.95$ for all three factors, confirming that NSS and PCA are discovering the same underlying structure from different angles: one parametric, one statistical. If $R^{2}$ is low, it means that $\lambda$ in the NSS model is not well-calibrated to capture the current historic dynamic of the market. PCA factors are data-dependent while NSS is a fixed structure, we need to choose between real statistic or an imposed functional form. In the notebook, we see that factor 1 $\mathbf{v}_{1}$ is well-aligned between PCA and NSS, not the same result yields from the other factors. 
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1 \linewidth]{Figures/04_pca_vs_nss.png}
+    \caption{PCA Eigenvectors vs NSS Loading Vectors}
+    \label{fig:04_pca_vs_nss}
+\end{figure}
+Figure \ref{fig:04_pca_vs_nss} compares both eigenvectors against maturities and it is easy to see that the curves with NSS are excessively smooth. Formalizing the visualization, we have to notice that NSS has a fixed exponential functional form parametrized by $\lambda_{1}$ and $\lambda_{2}$, while PCA captures the exact empiric form of the historic curve. The excess of smoothness of NSS in PC2 and PC3 is consequence that one and only one exponential cannot reproduce complex humps that appear in the data.
+
+\subsection{Conclusions and Key Takeaways}
+
+\begin{itemize}
+    \item Three factors explain over $99\%$ of daily yield curve variance. The remaining components are idiosyncratic noise that cannot be hedged systematically and should not drive portfolio positioning.
+
+    \item Factor immunization ($\text{DV01}_{PC_1} = 0$) is strictly more robust than duration matching: it neutralizes the dominant source of yield curve risk without assuming a perfectly parallel shift, which never occurs in practice.
+
+    \item PCA and NSS discover the same underlying structure from different angles: one statistical, one parametric. When $R^2$ between eigenvectors and NSS loadings is high ($> 0.90$), the two models are consistent and the NSS calibration can be trusted. When $R^2$ is low for PC2 or PC3, it signals that the chosen decay parameter $\lambda$ is not well-suited to the current market regime.
+\end{itemize}
+
+The PCA of this module has a direct financial application beyond risk management. The yield curve $r(t)$ from Module \ref{sec:M2} and its discount factors $Z(t_i)$ are the inputs to pricing the most liquid fixed income derivative in the world: the Interest Rate Swap (IRS). An IRS exchanges a fixed rate $K$ for a floating rate (SOFR or EURIBOR) on a notional $N$ over a sequence of dates $t_1, \dots, t_n$. Its fair fixed rate, the swap rate $K^*$, is determined entirely by the discount factors of Module \ref{sec:M2}:
+\begin{align*}
+    K^* = \frac{1 - Z(t_n)}{\sum_{i=1}^{n} 
+    \delta_i \cdot Z(t_i)}
+\end{align*}
+The connection with PCA is immediate: the DV01 of a swap is also a vector $\mathbf{d} \in \mathbb{R}^m$, concentrated at the payment dates of the fixed leg, and the factor DV01 decomposition $\text{DV01}_{PC_k} = \mathbf{v}_k^\top \mathbf{d}$ applies without modification. A swap desk that manages its book in factor space (neutralizing PC1, PC2 and PC3 exposures) is running exactly the risk framework developed across Modules \ref{sec:M3} and \ref{sec:M4}.
+
+\newpage
+
+\section{Module 5: IRS Pricing}
+\label{sec:M5}
+
+\begin{tcolorbox}[title = Python Implementation, colback = pythonyellow!70!white, colframe = pythonblue]
+    \textbf{Module:} \color{magenta} \texttt{src/swaps.py} \color{black} \\
+    \textbf{Classes:} \color{codegreen} \texttt{VanillaIRS} \color{black} and \color{codegreen} \texttt{SwapPortfolio} \color{black} \\
+    \textbf{Notebook:} \texttt{notebooks/05\_irs.ipynb}
+\end{tcolorbox}
+
+\subsection{Introduction and Class Hierarchy}
+
+The yield curve of Module \ref{sec:M2} and the sensitivity framework of Module \ref{sec:M3} converge in this final module to price the most liquid fixed income derivative in the world: the Interest Rate Swap (IRS). With over \$400 trillion in outstanding notional, the IRS market dwarfs all bond markets combined, and it is the instrument for which systems like Murex MX.3 were fundamentally designed. The key insight of this module is that an IRS is not a new mathematical object: it is a portfolio of Forward Rate Agreements, each of which is priced using exactly the forward rates and discount factors of Module \ref{sec:M2}. The swap rate $K^*$ is determined entirely by the discount curve, and the swap DV01 is a vector in $\mathbb{R}^m$ that feeds directly into the PCA risk framework of Module \ref{sec:M4}. The project thus closes a complete cycle: from a single bond price to a factor-based risk decomposition of a swap portfolio.
+
+\begin{verbatim}
+src/swaps.py
+|
+|-- VanillaIRS
+|       |
+|       |-- Attributes
+|       |       |-- N          Notional
+|       |       |-- K          Fixed rate
+|       |       |-- tenor      Maturity in years
+|       |       |-- freq       Payment frequency
+|       |       |-- curve      DiscountCurve (Module 2)
+|       |       |-- position   'long' or 'short'
+|       |       |-- pay_dates  Payment schedule
+|       |       |-- Z          Discount factors at pay_dates
+|       |
+|       |-- Leg Pricing
+|       |       |-- fixed_leg_value(curve)
+|       |       |-- floating_leg_value(curve)   = N always
+|       |
+|       |-- Swap Pricing
+|       |       |-- swap_rate()       K* formula
+|       |       |-- value(curve)      MtM = float - fixed
+|       |       |-- inception_value() Validation: must be 0
+|       |
+|       |-- FRA Decomposition
+|       |       |-- fra_values()      One row per period
+|       |                             sum = swap value at K*
+|       |
+|       |-- Sensitivity
+|       |       |-- dv01()            Parallel shift
+|       |       |-- key_rate_dv01()   KRD DV01 vector
+|       |       |-- modified_duration()
+|       |       |-- value_vs_rate()   P&L profile
+|       |
+|       |-- Summary
+|               |-- summary()         All metrics
+|
+|-- SwapPortfolio
+        |
+        |-- Aggregation
+        |       |-- total_value(curve)
+        |       |-- total_dv01()
+        |       |-- key_rate_dv01()
+        |
+        |-- Applications
+        |       |-- scenario_pnl(curve_shift)
+        |       |-- summary_table()
+        |
+        |-- Factory
+                |-- curve_trade(N, short, long, freq, curve)
+\end{verbatim}
+
+The two classes mirror the mathematical structure 
+exactly. \texttt{VanillaIRS} prices a single swap and 
+exposes its complete sensitivity profile, while 
+\texttt{SwapPortfolio} aggregates across multiple 
+contracts and implements the classic curve trade:
+
+\begin{lstlisting}[style=Pythonstyle]
+    # Price a 10y semi-annual swap at fair rate
+    swap = VanillaIRS(1_000_000, 0.0, 10, 2, curve)
+    K_star = swap.swap_rate()
+    swap   = VanillaIRS(1_000_000, K_star, 10, 2, curve)
+
+    # Validate: inception value must be zero
+    assert abs(swap.inception_value()) < 1e-4
+
+    # FRA decomposition: sum must be zero at K = K*
+    fra = swap.fra_values()
+    assert abs(fra["FRA Value"].sum()) < 1e-4
+
+    # Curve trade: pay fixed 2y, receive fixed 10y
+    trade = SwapPortfolio.curve_trade(
+            1_000_000, 2, 10, 2, curve
+            )
+\end{lstlisting}
+
+\subsection{Interest Rate Swap Definition and Structure}
+
+\begin{definition}[Interest Rate Swap]
+    An interest rate swap (IRS) is a contract between two counter-parties that agree to exchange cash flows at predetermined future dates $t_{1}, t_{2}, \dots, t_{n}$. In the most common form, the \textit{plain vanilla IRS}, one party pays a fixed rate $K$ and receives a floating rate (typically SOFR or EURIBOR) \footnote{In modern post-crisis markets, a \textbf{multi-curve framework} is used: the floating leg is projected using a forwarding curve (e.g., EURIBOR 6 M), while all cash flows are discounted using a risk-free OIS curve (e.g., SOFR or ESTR). For simplicity, this module assumes a single-curve environment where $Z(t)$ is used for both projection and discounting.}, both applied to a notional amount $N$. The net cash flow at each period $i$ is:
+    \begin{align*}
+        V_{i} &= N \cdot (L_{i - 1} - K) \cdot \delta_{i}
+    \end{align*}
+    where $L_{i - 1}$ is the floating rate observed at the start of the period $i$ and $\delta_{i} = t_{i} - t_{i - 1}$ is the day count fraction. The party paying fixed and receiving floating has a \textbf{long position}; the party paying floating and receiving fixed has a \textbf{short position}. 
+\end{definition}
+
+The fundamental insight is that a Swap is nothing more than a portfolio of forward rate agreements (FRAs), one for each payment date. Each FRA exchanges a fixed payment against a floating payment at a single future date, and summing them yields the full swap. This connection, developed in section \ref{subsec:swapfras}, is the most elegant result of the module.
+
+\subsection{The Floating Leg equals Par}
+
+Before pricing the swap, we need one foundational result: the present value of the floating leg always equals the notional $N$ at the start of each reset period. This is the key to the entire pricing framework.
+
+\begin{proposition}[Floating Bond = Par]
+    The present value of the floating leg at $t = 0$ is:
+    \begin{align*}
+        V_{\text{float}} = N
+    \end{align*}
+\end{proposition}
+
+\begin{proof}
+    The floating leg pays $N \cdot L_{i - 1} \cdot \delta_{i}$ at each $t_{i}$. By the definition of the LIBOR/SOFR rate, each payments satisfies:
+    \begin{align*}
+        N \cdot L_{i - 1} \cdot \delta_{i} \cdot Z(t_{i}) = N \cdot (Z(t_{i - 1}) - Z(t_{i}))
+    \end{align*}
+    This follows because $L_{i - 1}$ is defined precisely as the rate that makes the present value of a unit investment grow from $Z(t_{i - 1})$ to $Z(t_{i})$ over the period. Summing telescopically over all periods and adding the present value of the return of the notional at $t_{n}$:
+    \begin{align*}
+        V_{\text{float}} = N \sum_{i = 1}^{n} (Z(t_{i - 1}) - Z(t_{i})) + N \cdot Z(t_{n}) = N (Z(t_{0}) - Z(t_{n})) + N \cdot Z(t_{n}) = N \cdot Z(0) = N
+    \end{align*}
+\end{proof}
+The telescopic sum collapses beautifully: the floating leg is worth par regardless of the shape of the yield curve, because the floating rate resets continuously to the market rate.
+
+\subsection{Swap as a Portfolio of FRAs}
+\label{subsec:swapfras}
+
+\begin{definition}[Forward Rate Agreement]
+    A FRA is a contract where a fixed rate $K$ is agreed today for a loan over a future period $[t_{i - 1}, t_{i}]$. Its value at $t = 0$ is:
+    \begin{align*}
+        V_{\text{FRA}} = N \cdot \delta_{i} \cdot (f(t_{i - 1}, t_{i}) - K) \cdot Z(t_{i})
+    \end{align*}
+    where $f(t_{i - 1}, t_{i})$ is the forward rate defined in section \ref{subsec:fwdrates}.
+\end{definition}
+
+The IRS is then exactly the sum of these FRAs:
+\begin{align*}
+    \boxed{
+    V_{\text{swap}} = \sum_{i = 1}^{n} V_{\text{FRA}} (t_{i}) = N \cdot \sum_{i = 1}^{n} \delta_{i} \cdot (f(t_{i - 1}, t_{i}) - K) \cdot Z(t_{i})
+    }
+\end{align*}
+This decomposition makes the pricing completely transparent: the swap is worth the present value of the difference between the forward rates the market expects and the fixed rate $K$ the counter-party pays.
+
+\subsection{Swap Rate K*}
+
+\begin{definition}[Swap Rate $K^{*}$]
+    The swap rate $K^{*}$ is the fixed rate that makes the present value of the swap zero at inception:
+    \begin{align*}
+        V_{\text{swap}}(K^{*}) = 0
+    \end{align*}
+\end{definition}
+
+\begin{proposition}
+    The swap rate is given by:
+    \begin{align*}
+        K^{*} = \frac{1 - Z(t_{n})}{\sum_{i = 1}^{n} \delta_{i} \cdot Z(t_{i})}
+    \end{align*}
+\end{proposition}
+
+\begin{proof}
+    The swap can be decomposed as the difference between a floating bond and a fixed coupon bond:
+    \begin{align*}
+        V_{\text{swap}} = V_{\text{float}} - V_{\text{fixed}} = N - N \left(K \cdot \sum_{i = 1}^{n} \delta_{i} \cdot Z(t_{i}) + Z(t_{n})\right)
+    \end{align*}
+    setting $V_{\text{swap}} = 0$ and dividing by $N$:
+    \begin{align*}
+        1 &= K^{*} \cdot \sum_{i = 1}^{n} \delta_{i} \cdot Z(t_{i}) + Z(t_{n}) \\
+        K^{*} &= \frac{1 - Z(t_{n})}{\sum_{i = 1}^{n} \delta_{i} \cdot Z(t_{i})}
+    \end{align*}
+\end{proof}
+
+The numerator $1 - Z(t_{n})$ is the present value of a basis point (almost): it measures how much the discount factor has decayed from today to maturity. The denominator is the \textit{present value of an annuity} of $\delta_{i}$ at each payment date and it represents the sensitivity of the swap value to a 1 bp change in the swap rate. The swap is therefore the rate of annuity whose present value matches the decay of the discount factor to maturity. In the notebook, we use the following vanilla Swap: Notional $N = 1000000$, fair swap rate $K^{*} = 5.4939 \%$, tenor = 10Y, frequency = 2, position = long. Making a FRA decomposition, we get the FRA values by period showed in Figure \ref{fig:05_fra_decomposition} and validate that the sum of FRAs has to be zero.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width = 1 \linewidth]{Figures/05_fra_decomposition.png}
+    \caption{FRA Decomposition}
+    \label{fig:05_fra_decomposition}
+\end{figure}
+
+\subsection{Swap Value at t}
+
+Once the swap is agreed at rate $K$, if rates change the swap acquires positive or negative value. For the fixed payer (long position), the value at time $t$ is:
+\begin{align*}
+    V_{t} &= V_{\text{float}}(t) - V_{\text{fixed}}(t)
+\end{align*}
+Using the result that the floating leg always resets to par at each reset date, and recomputing the fixed leg under the new discount curve:
+\begin{align*}
+    V_{t} = N \left[1 - Z_{t}(t_{n}) - K \sum_{i: t_{i} > t} \delta_{i} \cdot Z_{t}(t_{i})\right]
+\end{align*}
+where $Z_{t}(\cdot)$ denotes discount factors under the curve at time $t$. Equivalently this can be written as:
+\begin{align*}
+    V_{t} &= (K^{*}_{t} - K) \sum_{i: t_{i} > t} \delta_{i} \cdot Z_{t}(t_{i})
+\end{align*}
+where $K_{t}^{*}$ is the current swap rate for the remaining tenor. If rates have risen $(K^{*}_{t} > K_{t})$, the fixed payer benefits because they are playing below-market fixed rate. If rates have fallen $(K^{*}_{t} <  K_{t})$ the fixed payer losses. In Figure \ref{fig:05_swap_vs_spot_curve} we can visualize how the swap curve behaves against the spot and forward curve, noting that the spot curve $r(t)$ is above the swap curve $K^{*}(t)$ for long tenors and very similar for short tenors.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1 \linewidth]{Figures/05_swap_vs_spot_curve.png}
+    \caption{Swap Curve vs Spot Curve}
+    \label{fig:05_swap_vs_spot_curve}
+\end{figure}
+
+\subsection{Swap DV01 and Applications}
+
+The DV01 swap under a parallel shift of the yield curve is:
+\begin{align*}
+    \text{DV01}_{\text{swap}} = \text{DV01}_{\text{fixed leg}} - \text{DV01}_{\text{floating leg}}
+\end{align*}
+Since the floating leg has very low duration (it resets to par at every payment date, so its effective duration is approximately $\delta_{1}/2$, half of the first period), the swap DV01 is dominated by the fixed leg:
+\begin{align*}
+    \text{DV01}_{\text{swap}} \approx D_{\text{mod}}^{\text{fixed}} \cdot V_{\text{fixed}} \cdot 0.0001
+\end{align*}
+The key rate DV01 profile of the swap is concentrated at intermediate maturities, peaking near the midpoint of the swap tenor. This contrasts sharply with a zero coupon bond, which concentrates all risk at maturity, and makes swaps particularly useful instruments for targeting specific parts of the yield curve. The swap has no convexity from the floating leg, all convexity comes from the fixed leg only.
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1 \linewidth]{Figures/05_swap_sensitivity.png}
+    \caption{Swap Sensitivity Decomposition}
+    \label{fig:05_swap_sensitivity}
+\end{figure}
+In figure \ref{fig:05_swap_sensitivity} we can visualize a swap P\&L profile against parallel shifts of the yield and KRD of a DV01. We can notice that the key rate nodes gets more relevant at long tenors near to maturity and that positive changes in level of the yield increases the value of the long position swap and when rates rise, the fixed payer benefits because they locked in a below-market fixed rate.
+\\
+Swaps are the most liquid fixed income derivatives in the world, with outstanding notional exceeding $\$400$ trillion. Their three main uses are:
+\begin{enumerate}
+    \item \textbf{Debt transformation:} A corporate issuer with floating rate debt (paying LIBOR + spread) can enter a swap paying fixed and receiving floating, effectively converting the floating obligation to a fixed rate. The swap eliminates the uncertainty of future interest payments.
+
+    \item \textbf{Duration management:} A pension fund or insurance company with long-dated liabilities wants to increase the duration of its asset portfolio without buying bonds. By receiving fixed in a long-dated IRS, the fund increases duration efficiently and at low transaction cost, since the swap requires no upfront payment.
+
+    \item \textbf{Yield curve positioning:} A portfolio manager who believes the yield curve will flatten can receive fixed in a long-dated swap and pay fixed in a short-dated swap simultaneously, creating a position that profits from flattening regardless of the absolute level of rates. This is the classic \textbf{curve trade} in fixed income.
+
+    \item \textbf{Economic Advantage:} IRS allow the "decoupling" of credit risk and interest rate risk. This enables a more efficient capital allocation in the economy, as companies can choose their funding structure based on their comparative advantage (credit) and then adjust their interest rate exposure through derivatives.
+\end{enumerate}
+
+\subsection{Conclusions and Key Takeaways}
+
+\begin{itemize}
+    \item The floating leg always equals par regardless of the shape of the yield curve. This is not an approximation but an exact result from the telescoping property of discount factors: all pricing complexity of the swap lives in the fixed leg alone.
+
+    \item The swap rate $K^*$ is the weighted average of the forward rates implied by the discount curve, with weights proportional to $\delta_i \cdot Z(t_i)$. In an upward-sloping curve, short forward rates pull $K^*$ below the long-maturity spot rate, explaining why the swap curve lies below the spot curve for long tenors.
+
+    \item The FRA decomposition exposes the internal structure of the swap: periods where the forward rate exceeds $K$ contribute positive value to the fixed payer, and vice versa. At $K = K^*$ these contributions cancel exactly, confirming the fair pricing condition. Note that the forward rates in each FRA must be computed under simple compounding, consistent with how LIBOR and SOFR rates are quoted in practice.
+
+    \item The curve trade (pay fixed short, receive fixed long) is P\&L neutral to parallel shifts when DV01s are matched. Profit and loss arise purely from changes in the slope of the yield curve, making it the canonical instrument for expressing a view on curve shape without directional rate exposure.
+\end{itemize}
+
+\newpage
+
+\section{Project Summary and Further Research}
+
+\subsection*{What This Project Built}
+
+This project developed a complete, self-contained fixed income analytics library in Python, grounded in formal mathematical derivations and validated against real market data from the Federal Reserve. The five modules form a coherent chain:
+\begin{enumerate}
+    \item \textbf{Module 1} established the mathematical foundations of bond pricing, from closed-form formulas to Newton-Raphson yield extraction and second-order risk approximations.
+    
+    \item \textbf{Module 2} replaced the constant discount rate with a full term structure, building the yield curve from observable prices via bootstrapping and extending it to arbitrary maturities through three interpolation methods of increasing sophistication: linear, cubic spline and Nelson-Siegel-Svensson.
+    
+    \item \textbf{Module 3} decomposed interest rate risk from a single parallel DV01 into a full Key Rate Duration vector, enabling granular hedging and non-parallel scenario analysis across a portfolio of bonds.
+    
+    \item \textbf{Module 4} reduced the $m$-dimensional KRD vector to three orthogonal factor exposures via PCA, confirmed the Litterman-Scheinkman result empirically, and connected it to the NSS parametric model, showing that both frameworks discover the same underlying structure.
+    
+    \item \textbf{Module 5} closed the cycle by pricing vanilla Interest Rate Swaps using the discount factors of Module 2, decomposing them into FRA portfolios, and exposing their sensitivity profile as a KRD DV01 vector that feeds directly into the risk framework of Modules 3 and 4.
+\end{enumerate}
+
+The result is a project where each module is both mathematically derived in this document and numerically implemented in a corresponding Python class, with interactive notebooks that validate every result against real or realistic market data.
+
+\subsection*{Virtues of the Approach}
+
+\begin{itemize}
+    \item \textbf{Theory-code correspondence:} every formula in this document has a direct implementation in \texttt{src/}, with identical notation. The document and the code are designed to be read side by side.
+    
+    \item \textbf{Validation by construction:} roundtrip tests (price $\to$ YTM $\to$ price), the KRD additivity property, the floating leg = par result and the FRA sum = 0 condition are all checked programmatically in every notebook run. The library cannot silently produce wrong results.
+    
+    \item \textbf{Real data:} all yield curves are built from U.S. Treasury data sourced from FRED, ensuring that the results reflect actual market conditions rather than stylized examples.
+    
+    \item \textbf{Modularity:} each class is self-contained and interoperable. A \color{codegreen} \texttt{DiscountCurve} \color{black} built in Module 2 is consumed by \color{codegreen} \texttt{BondSensitivity} \color{black} in Module 3, \color{codegreen} \texttt{PCARiskManager} \color{black} in Module 4 and \color{codegreen} \texttt{VanillaIRS} \color{black} in Module 5 without modification.
+\end{itemize}
+
+\subsection*{Limitations}
+
+\begin{itemize}
+    \item \textbf{Single-curve framework:} All modules assume a single discount curve for both projection and discounting. Post-2008 markets require a multi-curve 
+    framework where the floating leg is projected using a tenor-specific forward curve (e.g., EURIBOR 6M) and discounted using an OIS curve (SOFR or ESTR). The mathematical extension is straightforward but requires a second \texttt{DiscountCurve} object and a modified \texttt{fra\_values()} method.
+    
+    \item \textbf{Vanilla instruments only:} The library prices plain vanilla bonds and swaps. It does not cover options, swaptions, caps and floors, callable bonds or any instrument with optionality, which require stochastic rate models (Hull-White, Black-Karasinski) beyond the deterministic curve framework of this project.
+    
+    \item \textbf{Deterministic curve:} The yield curve is treated as a deterministic function of time. A stochastic extension would model $r(t)$ as a stochastic process (e.g., Vasicek, CIR or HJM), enabling the pricing of interest rate derivatives with early exercise features.
+    
+    \item \textbf{No credit risk:} All instruments are assumed default-free. Incorporating credit spreads, survival probabilities and recovery rates would extend the framework to corporate bonds and credit default swaps (CDS).
+    
+    \item \textbf{Static PCA:} The PCA of Module 4 is estimated on a fixed historical window. A dynamic extension using rolling or exponentially weighted covariance matrices would allow the factor structure to adapt to changing market regimes, which is particularly important around central bank policy shifts.
+\end{itemize}
+
+\subsection*{Natural Extensions}
+
+Each limitation above is also a natural next step, ordered from most to least immediate:
+
+\begin{enumerate}
+    \item \textbf{Multi-curve framework} (Module 2 extension): Implement separate projection and discount curves, calibrate basis spreads and reprice the swap portfolio under the post-2008 standard.
+    
+    \item \textbf{Interest rate options} (Module 6): Implement caps, floors and European swaptions under Black's model, connecting the volatility surface to the implied forward rate distribution.
+    
+    \item \textbf{Stochastic rate models} (Module 7): Implement Vasicek and Hull-White one-factor models, calibrate them to the observed yield curve and price Bermudan swaptions via trinomial trees or Monte Carlo simulation.
+    
+    \item \textbf{Credit risk} (Module 8): Extend the discount curve to incorporate credit spreads, implement the Merton structural model and price Credit Default Swaps as a natural complement to the IRS framework.
+    
+    \item \textbf{Dynamic risk management} (Module 9): Replace the static PCA with a Dynamic Nelson-Siegel model, implement Kalman filtering to track factor evolution in real time and back-test the factor immunization strategy across historical rate cycles.
+\end{enumerate}
+
+The framework developed here is the foundation on which all these extensions build. Every new instrument will consume a \color{codegreen} \texttt{DiscountCurve} \color{black}, expose a KRD DV01 vector and connect to the PCA risk engine, because that is how the fixed income world is organized, from the simplest Treasury bill to the most complex structured product.
+
+\newpage
+
+\bibliographystyle{apalike}
+\bibliography{references}
+
+\end{document}
