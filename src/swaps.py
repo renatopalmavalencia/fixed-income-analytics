@@ -265,7 +265,7 @@ class VanillaIRS:
             # Forward rate from discount factors
             # f(t_{i-1}, t_i) = [ln Z(t_{i-1}) - ln Z(t_i)]
             #                    / delta_i
-            f_i = (np.log(z_prev) - np.log(z)) / self.delta
+            f_i = (z_prev / z - 1.0) / self.delta
 
             # FRA value
             v_fra = (self.N * self.delta *
